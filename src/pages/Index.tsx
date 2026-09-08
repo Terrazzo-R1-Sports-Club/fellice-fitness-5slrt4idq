@@ -164,7 +164,7 @@ const Index = () => {
       })
       await createRecord('lead_submission_events', {
         event_id: crypto.randomUUID(),
-        lead_submission_id: leadSubmissionId,
+        lead_submission_id: leadSubmissionId.current,
         event_type: 'TRIAGEM_CONCLUIDA',
         occurred_at: now,
         payload: { form_id: FORM_ID, form_version: FORM_VERSION },
