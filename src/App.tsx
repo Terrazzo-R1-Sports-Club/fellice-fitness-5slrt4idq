@@ -5,6 +5,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import Index from './pages/Index'
+import Queue from './pages/Queue'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -20,6 +21,7 @@ const App = () => (
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
+            <Route path="/fila" element={<Queue />} />
             {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
           </Route>
           <Route path="*" element={<NotFound />} />

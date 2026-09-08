@@ -178,6 +178,27 @@ const Index = () => {
         occurred_at: now,
         payload: { form_id: FORM_ID, form_version: FORM_VERSION },
       })
+      if (form.precisa_de_ajuda_humana) {
+        await createRecord('lead_handoffs', {
+          handoff_id: crypto.randomUUID(),
+          lead_submission_id: leadSubmissionId.current,
+          form_id: FORM_ID,
+          form_version: FORM_VERSION,
+          created_at: now,
+          motivo: 'PEDIDO_DE_AJUDA_HUMANA',
+          nome: form.nome,
+          canal_de_retorno: form.canal_de_retorno,
+          objetivo: form.objetivo,
+          proximidade: form.proximidade,
+          ocupacao: form.ocupacao,
+          interesse_em_visita: form.interesse_em_visita,
+          utm_source: utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
+          attribution_status: attributionStatus,
+          status: 'PENDENTE',
+        })
+      }
       setStatus('success')
       setMessage(
         'Recebemos suas informações. A equipe da Fellice Fitness poderá entrar em contato pelo canal informado.',

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-08T19:12:13.863Z",
+  "generatedAt": "2026-09-08T19:19:58.318Z",
   "collections": [
     {
       "name": "users",
@@ -29,14 +29,29 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "champion",
+            "consultor"
+          ]
         }
       ],
       "indexes": [
@@ -90,14 +105,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -130,7 +150,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["DRAFT", "TESTE", "ATIVA", "DESATIVADA"]
+          "selectValues": [
+            "DRAFT",
+            "TESTE",
+            "ATIVA",
+            "DESATIVADA"
+          ]
         },
         {
           "name": "field_contract",
@@ -149,14 +174,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -298,28 +328,42 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["recebida", "incompleta", "ausente"]
+          "selectValues": [
+            "recebida",
+            "incompleta",
+            "ausente"
+          ]
         },
         {
           "name": "triagem_status",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["EM_ANDAMENTO", "TRIAGEM_CONCLUIDA", "ABANDONADO", "SALVAMENTO_FALHOU"]
+          "selectValues": [
+            "EM_ANDAMENTO",
+            "TRIAGEM_CONCLUIDA",
+            "ABANDONADO",
+            "SALVAMENTO_FALHOU"
+          ]
         },
         {
           "name": "created",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "consentimento",
@@ -364,7 +408,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["FORM_STARTED", "TRIAGEM_CONCLUIDA", "ABANDONADO", "SALVAMENTO_FALHOU"]
+          "selectValues": [
+            "FORM_STARTED",
+            "TRIAGEM_CONCLUIDA",
+            "ABANDONADO",
+            "SALVAMENTO_FALHOU"
+          ]
         },
         {
           "name": "occurred_at",
@@ -383,17 +432,278 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "lead_handoffs",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "create": "",
+        "update": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "handoff_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lead_submission_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "form_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "form_version",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "motivo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "canal_de_retorno",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "objetivo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "proximidade",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ocupacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "interesse_em_visita",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "utm_source",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "utm_medium",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "utm_campaign",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attribution_status",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "PENDENTE",
+            "ASSUMIDO",
+            "ENCERRADO_SEM_AGENDAMENTO"
+          ]
+        },
+        {
+          "name": "dono",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assumed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "closed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_encerramento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsavel_anterior",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_lead_handoffs_submission` ON `lead_handoffs` (`lead_submission_id`)"
+      ]
+    },
+    {
+      "name": "lead_handoff_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": "@request.auth.id != \"\"",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "handoff_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lead_submission_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "event_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "HANDOFF_CREATED",
+            "HANDOFF_ASSUMED",
+            "HANDOFF_REASSIGNED",
+            "HANDOFF_CLOSED",
+            "HANDOFF_FAILED"
+          ]
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payload",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_handoff_events_event` ON `lead_handoff_events` (`event_id`)"
+      ]
     }
   ]
 }
