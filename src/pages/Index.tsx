@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 type Submission = {
   nome: string
@@ -8,6 +8,7 @@ type Submission = {
   ocupacao: string
   interesse_em_visita: string
   precisa_de_ajuda_humana: boolean
+  consentimento: boolean
 }
 
 const FORM_ID = 'fellice-captura-01'
@@ -57,6 +58,7 @@ const initialForm: Submission = {
   ocupacao: '',
   interesse_em_visita: '',
   precisa_de_ajuda_humana: false,
+  consentimento: false,
 }
 
 async function createRecord(collection: string, data: Record<string, unknown>) {
@@ -105,6 +107,8 @@ const SelectField = ({
 )
 
 const Index = () => {
+  const startedAt = useRef(new Date().toISOString())
+  const startedEventRecorded = useRef(false)
   const [form, setForm] = useState(initialForm)
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
@@ -116,9 +120,15 @@ const Index = () => {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!form.consentimento) {
+      setStatus('error')
+      setMessage('É necessário autorizar o uso dos meios de contato para enviar a triagem.')
+      return
+    }
     setStatus('sending')
     setMessage('')
     const now = new Date().toISOString()
+    const submissionStartedAt = startedAt.current
     const params = new URLSearchParams(window.location.search)
     const utmSource = params.get('utm_source') || ''
     const utmMedium = params.get('utm_medium') || ''
@@ -136,9 +146,15 @@ const Index = () => {
         lead_submission_id: leadSubmissionId,
         form_id: FORM_ID,
         form_version: FORM_VERSION,
-        started_at: now,
+        started_at: submissionStartedAt,
         submitted_at: now,
-        ...form,
+        nome: form.nome,
+        canal_de_retorno: form.canal_de_retorno,
+        objetivo: form.objetivo,
+        proximidade: form.proximidade,
+        ocupacao: form.ocupacao,
+        interesse_em_visita: form.interesse_em_visita,
+        precisa_de_ajuda_humana: form.precisa_de_ajuda_humana,
         utm_source: utmSource,
         utm_medium: utmMedium,
         utm_campaign: utmCampaign,
@@ -157,10 +173,28 @@ const Index = () => {
         'Recebemos suas informações. A equipe da Fellice Fitness poderá entrar em contato pelo canal informado.',
       )
       setForm(initialForm)
+      startedAt.current = new Date().toISOString()
+      startedEventRecorded.current = false
     } catch (error) {
       console.error(error)
       setStatus('error')
       setMessage('Não foi possível salvar agora. Confira os dados e tente novamente.')
+    }
+  }
+
+  const recordStart = async () => {
+    if (startedEventRecorded.current || !BACKEND_URL) return
+    startedEventRecorded.current = true
+    try {
+      await createRecord('lead_submission_events', {
+        event_id: crypto.randomUUID(),
+        lead_submission_id: crypto.randomUUID(),
+        event_type: 'FORM_STARTED',
+        occurred_at: startedAt.current,
+        payload: { form_id: FORM_ID, form_version: FORM_VERSION },
+      })
+    } catch (error) {
+      console.warn('Não foi possível registrar o início da triagem.', error)
     }
   }
 
@@ -209,6 +243,7 @@ const Index = () => {
 
         <form
           onSubmit={handleSubmit}
+          onFocus={recordStart}
           className="rounded-3xl border border-orange-100 bg-white p-6 shadow-xl shadow-orange-100/50 sm:p-9"
         >
           <div className="mb-8 border-b border-slate-100 pb-5">
@@ -291,11 +326,20 @@ const Index = () => {
           </div>
 
           <div className="mt-8 border-t border-slate-100 pt-6">
-            <p className="text-xs leading-5 text-slate-500">
-              Ao enviar, você autoriza que a ACADEMIA utilize e-mail, telefone, SMS e WhatsApp para
-              enviar notícias, avisos, dicas, promoções e informações relevantes sobre o
-              funcionamento da academia.
-            </p>
+            <label className="flex cursor-pointer items-start gap-3 text-xs leading-5 text-slate-600">
+              <input
+                type="checkbox"
+                required
+                checked={form.consentimento}
+                onChange={(event) => update('consentimento', event.target.checked)}
+                className="mt-1 h-4 w-4 accent-orange-600"
+              />
+              <span>
+                O lead autoriza que a ACADEMIA se utilize dos meios eletrônicos (e-mail, telefone,
+                mensagens SMS e Whatsapp) com o objetivo de enviar notícias, avisos, dicas,
+                promoções e outras informações relevantes acerca do funcionamento da academia.
+              </span>
+            </label>
             <button
               type="submit"
               disabled={status === 'sending'}
