@@ -179,8 +179,9 @@ const Index = () => {
         payload: { form_id: FORM_ID, form_version: FORM_VERSION },
       })
       if (form.precisa_de_ajuda_humana) {
+        const handoffId = crypto.randomUUID()
         await createRecord('lead_handoffs', {
-          handoff_id: crypto.randomUUID(),
+          handoff_id: handoffId,
           lead_submission_id: leadSubmissionId.current,
           form_id: FORM_ID,
           form_version: FORM_VERSION,
@@ -197,6 +198,14 @@ const Index = () => {
           utm_campaign: utmCampaign,
           attribution_status: attributionStatus,
           status: 'PENDENTE',
+        })
+        await createRecord('lead_handoff_events', {
+          event_id: crypto.randomUUID(),
+          handoff_id: handoffId,
+          lead_submission_id: leadSubmissionId.current,
+          event_type: 'HANDOFF_CREATED',
+          occurred_at: now,
+          payload: { status: 'PENDENTE', motivo: 'PEDIDO_DE_AJUDA_HUMANA' },
         })
       }
       setStatus('success')
