@@ -108,6 +108,7 @@ const SelectField = ({
 
 const Index = () => {
   const startedAt = useRef(new Date().toISOString())
+  const leadSubmissionId = useRef(crypto.randomUUID())
   const startedEventRecorded = useRef(false)
   const [form, setForm] = useState(initialForm)
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
@@ -139,11 +140,9 @@ const Index = () => {
         : utmSource || utmMedium || utmCampaign
           ? 'incompleta'
           : 'ausente'
-    const leadSubmissionId = crypto.randomUUID()
-
     try {
       await createRecord('lead_submissions', {
-        lead_submission_id: leadSubmissionId,
+        lead_submission_id: leadSubmissionId.current,
         form_id: FORM_ID,
         form_version: FORM_VERSION,
         started_at: submissionStartedAt,
@@ -155,6 +154,8 @@ const Index = () => {
         ocupacao: form.ocupacao,
         interesse_em_visita: form.interesse_em_visita,
         precisa_de_ajuda_humana: form.precisa_de_ajuda_humana,
+        consentimento: form.consentimento,
+        consentimento_at: now,
         utm_source: utmSource,
         utm_medium: utmMedium,
         utm_campaign: utmCampaign,
@@ -174,6 +175,7 @@ const Index = () => {
       )
       setForm(initialForm)
       startedAt.current = new Date().toISOString()
+      leadSubmissionId.current = crypto.randomUUID()
       startedEventRecorded.current = false
     } catch (error) {
       console.error(error)
@@ -188,7 +190,7 @@ const Index = () => {
     try {
       await createRecord('lead_submission_events', {
         event_id: crypto.randomUUID(),
-        lead_submission_id: crypto.randomUUID(),
+        lead_submission_id: leadSubmissionId.current,
         event_type: 'FORM_STARTED',
         occurred_at: startedAt.current,
         payload: { form_id: FORM_ID, form_version: FORM_VERSION },
