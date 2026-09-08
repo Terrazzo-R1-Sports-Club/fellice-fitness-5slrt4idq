@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 type Submission = {
   nome: string
@@ -87,18 +88,26 @@ const SelectField = ({
   required?: boolean
   onChange: (value: string) => void
 }) => (
-  <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-    {label} {required && <span className="text-orange-600">*</span>}
+  <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+    <span>
+      {label} {required && <span className="text-orange-600 dark:text-orange-500">*</span>}
+    </span>
     <select
       name={name}
       value={value}
       required={required}
       onChange={(event) => onChange(event.target.value)}
-      className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 text-base font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
+      className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 text-base font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-orange-500 dark:focus:ring-orange-950/60"
     >
-      <option value="">Selecione uma opção</option>
+      <option value="" className="bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-100">
+        Selecione uma opção
+      </option>
       {options.map((option) => (
-        <option key={option} value={option}>
+        <option
+          key={option}
+          value={option}
+          className="bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-100"
+        >
           {option}
         </option>
       ))}
@@ -201,44 +210,50 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#fffaf5] text-slate-900">
-      <header className="border-b border-orange-100 bg-white/90">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+    <div className="min-h-screen bg-[#fffaf5] text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100">
+      <header className="border-b border-orange-100/80 bg-white/90 backdrop-blur transition-colors duration-200 dark:border-slate-800/80 dark:bg-slate-900/90">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-orange-600">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-orange-600 dark:text-orange-500">
               Fellice Fitness
             </p>
-            <p className="mt-1 text-sm text-slate-500">Terrazzo R1 Sports Club</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Terrazzo R1 Sports Club
+            </p>
           </div>
-          <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
-            Triagem {FORM_VERSION}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-950/60 dark:text-orange-300">
+              Triagem {FORM_VERSION}
+            </span>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-10 px-5 py-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
         <section className="pt-2 lg:sticky lg:top-8">
-          <p className="mb-4 inline-flex rounded-full bg-orange-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-orange-700">
+          <p className="mb-4 inline-flex rounded-full bg-orange-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-orange-700 dark:bg-orange-950/80 dark:text-orange-300">
             Conheça a academia
           </p>
-          <h1 className="max-w-xl text-4xl font-black leading-tight tracking-tight text-slate-950 sm:text-5xl">
+          <h1 className="max-w-xl text-4xl font-black leading-tight tracking-tight text-slate-950 sm:text-5xl dark:text-slate-50">
             Vamos entender o que você busca para treinar melhor.
           </h1>
-          <p className="mt-5 max-w-lg text-lg leading-8 text-slate-600">
+          <p className="mt-5 max-w-lg text-lg leading-8 text-slate-600 dark:text-slate-300">
             Responda algumas perguntas rápidas. Assim nossa equipe prepara um atendimento mais útil
             para você.
           </p>
-          <div className="mt-8 space-y-4 text-sm text-slate-600">
+          <div className="mt-8 space-y-4 text-sm text-slate-600 dark:text-slate-300">
             <p>
-              <strong className="text-slate-900">1.</strong> Conte seu objetivo e sua relação com a
-              região.
+              <strong className="text-slate-900 dark:text-slate-100">1.</strong> Conte seu objetivo
+              e sua relação com a região.
             </p>
             <p>
-              <strong className="text-slate-900">2.</strong> Informe o melhor canal para retorno.
+              <strong className="text-slate-900 dark:text-slate-100">2.</strong> Informe o melhor
+              canal para retorno.
             </p>
             <p>
-              <strong className="text-slate-900">3.</strong> Se preferir, peça ajuda humana no
-              final.
+              <strong className="text-slate-900 dark:text-slate-100">3.</strong> Se preferir, peça
+              ajuda humana no final.
             </p>
           </div>
         </section>
@@ -246,40 +261,42 @@ const Index = () => {
         <form
           onSubmit={handleSubmit}
           onFocus={recordStart}
-          className="rounded-3xl border border-orange-100 bg-white p-6 shadow-xl shadow-orange-100/50 sm:p-9"
+          className="rounded-3xl border border-orange-100 bg-white p-6 shadow-xl shadow-orange-100/50 transition-colors duration-200 sm:p-9 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none"
         >
-          <div className="mb-8 border-b border-slate-100 pb-5">
-            <h2 className="text-2xl font-bold text-slate-950">Sua triagem inicial</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              <span className="text-orange-600">*</span> Campos obrigatórios
+          <div className="mb-8 border-b border-slate-100 pb-5 dark:border-slate-800">
+            <h2 className="text-2xl font-bold text-slate-950 dark:text-slate-50">
+              Sua triagem inicial
+            </h2>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              <span className="text-orange-600 dark:text-orange-500">*</span> Campos obrigatórios
             </p>
           </div>
 
           <div className="space-y-6">
-            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-              Como podemos chamar você?{' '}
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
               <span>
-                <span className="text-orange-600">*</span>
+                Como podemos chamar você?{' '}
+                <span className="text-orange-600 dark:text-orange-500">*</span>
               </span>
               <input
                 required
                 value={form.nome}
                 onChange={(event) => update('nome', event.target.value)}
                 placeholder="Seu nome"
-                className="min-h-12 rounded-xl border border-slate-200 px-4 text-base font-normal outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
+                className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 text-base font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-orange-500 dark:focus:ring-orange-950/60"
               />
             </label>
-            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-              Qual o melhor canal para retorno?{' '}
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
               <span>
-                <span className="text-orange-600">*</span>
+                Qual o melhor canal para retorno?{' '}
+                <span className="text-orange-600 dark:text-orange-500">*</span>
               </span>
               <input
                 required
                 value={form.canal_de_retorno}
                 onChange={(event) => update('canal_de_retorno', event.target.value)}
                 placeholder="WhatsApp, telefone ou e-mail"
-                className="min-h-12 rounded-xl border border-slate-200 px-4 text-base font-normal outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
+                className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 text-base font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-orange-500 dark:focus:ring-orange-950/60"
               />
             </label>
             <SelectField
@@ -313,7 +330,7 @@ const Index = () => {
               required
               onChange={(value) => update('interesse_em_visita', value)}
             />
-            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-orange-100 bg-orange-50/60 p-4 text-sm text-slate-700">
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-orange-100 bg-orange-50/60 p-4 text-sm text-slate-700 transition-colors dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-300">
               <input
                 type="checkbox"
                 checked={form.precisa_de_ajuda_humana}
@@ -321,14 +338,16 @@ const Index = () => {
                 className="mt-1 h-4 w-4 accent-orange-600"
               />
               <span>
-                <strong className="block text-slate-900">Quero falar com uma pessoa</strong>Tenho
-                uma dúvida ou prefiro continuar com atendimento humano.
+                <strong className="block text-slate-900 dark:text-slate-100">
+                  Quero falar com uma pessoa
+                </strong>
+                Tenho uma dúvida ou prefiro continuar com atendimento humano.
               </span>
             </label>
           </div>
 
-          <div className="mt-8 border-t border-slate-100 pt-6">
-            <label className="flex cursor-pointer items-start gap-3 text-xs leading-5 text-slate-600">
+          <div className="mt-8 border-t border-slate-100 pt-6 dark:border-slate-800">
+            <label className="flex cursor-pointer items-start gap-3 text-xs leading-5 text-slate-600 dark:text-slate-400">
               <input
                 type="checkbox"
                 required
@@ -352,7 +371,11 @@ const Index = () => {
             {message && (
               <p
                 role="status"
-                className={`mt-4 rounded-xl p-4 text-sm ${status === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}
+                className={`mt-4 rounded-xl p-4 text-sm ${
+                  status === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                    : 'bg-red-50 text-red-800 dark:bg-red-950/50 dark:text-red-300'
+                }`}
               >
                 {message}
               </p>
