@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-08T18:32:24.200Z",
+  "generatedAt": "2026-09-08T18:32:50.151Z",
   "collections": [
     {
       "name": "users",
@@ -53,8 +53,8 @@
       "name": "lead_forms",
       "type": "base",
       "apiRules": {
-        "list": "",
-        "view": "",
+        "list": null,
+        "view": null,
         "create": null,
         "update": null,
         "delete": null
@@ -116,8 +116,8 @@
       "name": "lead_form_versions",
       "type": "base",
       "apiRules": {
-        "list": "",
-        "view": "",
+        "list": null,
+        "view": null,
         "create": null,
         "update": null,
         "delete": null
