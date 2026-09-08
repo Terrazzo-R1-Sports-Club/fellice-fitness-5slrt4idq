@@ -1,0 +1,431 @@
+{
+  "generatedAt": "2026-09-08T18:32:24.200Z",
+  "collections": [
+    {
+      "name": "users",
+      "type": "auth",
+      "apiRules": {
+        "list": "id = @request.auth.id",
+        "view": "id = @request.auth.id",
+        "create": "",
+        "update": "id = @request.auth.id",
+        "delete": "id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "avatar",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_tokenKey__pb_users_auth_` ON `users` (`tokenKey`)",
+        "CREATE UNIQUE INDEX `idx_email__pb_users_auth_` ON `users` (`email`) WHERE `email` != ''"
+      ]
+    },
+    {
+      "name": "lead_forms",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "form_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "active_version",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "lead_form_versions",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "form_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "form_version",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "DRAFT",
+            "TESTE",
+            "ATIVA",
+            "DESATIVADA"
+          ]
+        },
+        {
+          "name": "field_contract",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "published_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "lead_submissions",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": "",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "lead_submission_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "form_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "form_version",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "started_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "submitted_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "canal_de_retorno",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "objetivo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Emagrecimento",
+            "Ganho de massa muscular",
+            "Condicionamento físico e resistência",
+            "Saúde, mobilidade e qualidade de vida",
+            "Recuperação de lesões",
+            "Melhorar a performance esportiva",
+            "Ainda não defini meu objetivo"
+          ]
+        },
+        {
+          "name": "proximidade",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Moro no Itaigara ou em bairros vizinhos",
+            "Trabalho na região do Itaigara",
+            "Passo com frequência pela região",
+            "Moro/trabalho em outra região, mas me desloco para treinar",
+            "Ainda não conheço bem a região"
+          ]
+        },
+        {
+          "name": "ocupacao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "CLT",
+            "Autônomo/Empresário",
+            "Executivo/Gestor",
+            "Estudante",
+            "Aposentado",
+            "Profissional da saúde, educação ou outra área com horário irregular",
+            "Prefiro não informar"
+          ]
+        },
+        {
+          "name": "interesse_em_visita",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Sim, quero agendar uma visita presencial",
+            "Sim, quero agendar uma aula experimental",
+            "Quero receber mais informações antes de decidir",
+            "Não tenho interesse no momento"
+          ]
+        },
+        {
+          "name": "precisa_de_ajuda_humana",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "utm_source",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "utm_medium",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "utm_campaign",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "attribution_status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "recebida",
+            "incompleta",
+            "ausente"
+          ]
+        },
+        {
+          "name": "triagem_status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "EM_ANDAMENTO",
+            "TRIAGEM_CONCLUIDA",
+            "ABANDONADO",
+            "SALVAMENTO_FALHOU"
+          ]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "lead_submission_events",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": "",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lead_submission_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "event_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "FORM_STARTED",
+            "TRIAGEM_CONCLUIDA",
+            "ABANDONADO",
+            "SALVAMENTO_FALHOU"
+          ]
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "payload",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": []
+    }
+  ]
+}
