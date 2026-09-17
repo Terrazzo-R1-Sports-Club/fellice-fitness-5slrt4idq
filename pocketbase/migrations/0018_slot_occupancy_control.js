@@ -52,7 +52,8 @@ migrate(
       const record = new Record(occupancy)
       record.set('slot_id', slotId)
       record.set('capacity', slot.get('capacity'))
-      record.set('active', activeBySlot[slotId] || 0)
+      record.set('active', activeBySlot[slotId] ?? 0)
+      record.set('updated', new Date().toISOString())
       app.save(record)
     }
   },
