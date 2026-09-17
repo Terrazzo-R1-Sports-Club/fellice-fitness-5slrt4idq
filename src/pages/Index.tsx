@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
 type Submission = {
@@ -286,6 +287,12 @@ const Index = () => {
               ajuda humana no final.
             </p>
           </div>
+          <Link
+            to="/agendar"
+            className="mt-6 inline-block rounded-xl border border-orange-200 bg-white px-4 py-3 text-sm font-bold text-orange-700 transition hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-900 dark:text-orange-300"
+          >
+            Prefere escolher um horário? Agende aqui
+          </Link>
         </section>
 
         <form
