@@ -17,11 +17,32 @@
 // (reescolha RN-2.06 e transição TENTATIVA → CONCLUIDO).
 
 // CREATE: reserva nova (TENTATIVA ou CONCLUIDO direto, como a página /agendar faz)
+// F2-IMP-006: copia o contexto da triagem (lead_submissions, superuser-only) para o
+// appointment — a visão operacional mostra o contexto sem expor a coleção protegida.
 onRecordCreate((e) => {
   const rec = e.record
   const status = rec.getString('status', '')
   const slotId = rec.getString('slot_id', '')
   const ACTIVE = { CONCLUIDO: true, TENTATIVA: true }
+  // contexto da triagem (se o lead veio da triagem da Fase 1)
+  try {
+    const subId = rec.getString('lead_submission_id', '')
+    if (subId) {
+      const sub = $app.findFirstRecordByFilter('lead_submissions', 'lead_submission_id = {:id}', {
+        id: subId,
+      })
+      if (sub) {
+        rec.set('objetivo', sub.getString('objetivo', ''))
+        rec.set('proximidade', sub.getString('proximidade', ''))
+        rec.set('ocupacao', sub.getString('ocupacao', ''))
+        rec.set('interesse_em_visita', sub.getString('interesse_em_visita', ''))
+        rec.set('utm_source', sub.getString('utm_source', ''))
+        rec.set('utm_medium', sub.getString('utm_medium', ''))
+        rec.set('utm_campaign', sub.getString('utm_campaign', ''))
+        rec.set('attribution_status', sub.getString('attribution_status', ''))
+      }
+    }
+  } catch (_) {}
   let syncAfter = ''
   if (ACTIVE[status] && slotId) {
     // capacidade do slot
