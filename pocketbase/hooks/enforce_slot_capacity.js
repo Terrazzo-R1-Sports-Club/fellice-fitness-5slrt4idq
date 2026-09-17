@@ -4,87 +4,95 @@
 // (agenda_slot_occupancy) não era atualizado por nenhuma camada e o servidor
 // aceitava reservas acima da capacidade via API direta.
 //
-// Este hook roda em QUALQUER salvamento de lead_appointments (API pública, página,
-// migração): antes de gravar, conta as reservas ativas (CONCLUIDO + TENTATIVA) já
-// existentes no slot; se o slot já está cheio, rejeita com BadRequestError (HTTP 400).
-// Após gravar, mantém agenda_slot_occupancy sincronizada com a contagem real.
+// Hooks que rodam em QUALQUER salvamento de lead_appointments (API pública, página,
+// migração): antes de gravar, contam as reservas ativas (CONCLUIDO + TENTATIVA) já
+// existentes no slot; se o slot já está cheio, rejeitam com BadRequestError (HTTP 400).
+// Após gravar, mantêm agenda_slot_occupancy sincronizada com a contagem real.
+//
+// IMPORTANTE (JSVM): callbacks executam em pool separado — toda a lógica é INLINE
+// em cada callback, sem referências a declarações de topo.
 //
 // Exceções: slot vazio (fallback humano RN-2.05), DESISTENCIA e ENCAMINHAMENTO_HUMANO
 // não ocupam vaga; a própria reserva já ativa no mesmo slot não conta duas vezes
 // (reescolha RN-2.06 e transição TENTATIVA → CONCLUIDO).
-
-const ACTIVE = { CONCLUIDO: true, TENTATIVA: true }
-
-const capacityOf = (slotId) => {
-  try {
-    const slot = $app.findFirstRecordByData('agenda_slots', 'slot_id', slotId)
-    return Number(slot.get('capacity') ?? 1) || 1
-  } catch (_) {
-    return 1
-  }
-}
-
-// contagem de reservas ativas no slot, excluindo a própria reserva (quando ela já estava ativa)
-const activeCountForSlot = (slotId, excludeAppointmentId) => {
-  if (!slotId) return 0
-  let rows = []
-  try {
-    rows = $app.findRecordsByFilter(
-      'lead_appointments',
-      "slot_id = {:slot} && (status = 'CONCLUIDO' || status = 'TENTATIVA')",
-      '',
-      0,
-      0,
-      { slot: slotId },
-    )
-  } catch (_) {
-    return 0
-  }
-  let n = 0
-  for (const r of rows) {
-    if (excludeAppointmentId && r.getString('appointment_id') === excludeAppointmentId) continue
-    n++
-  }
-  return n
-}
-
-// mantém agenda_slot_occupancy = contagem real (cria o registro se não existir)
-const syncOccupancy = (slotId) => {
-  if (!slotId) return
-  let row = null
-  try {
-    row = $app.findFirstRecordByData('agenda_slot_occupancy', 'slot_id', slotId)
-  } catch (_) {
-    row = null
-  }
-  const active = activeCountForSlot(slotId, '')
-  if (row) {
-    row.set('active', active)
-    $app.save(row)
-  } else {
-    const record = new Record($app.findCollectionByNameOrId('agenda_slot_occupancy'))
-    record.set('slot_id', slotId)
-    record.set('capacity', capacityOf(slotId))
-    record.set('active', active)
-    $app.save(record)
-  }
-}
 
 // CREATE: reserva nova (TENTATIVA ou CONCLUIDO direto, como a página /agendar faz)
 onRecordCreate((e) => {
   const rec = e.record
   const status = rec.getString('status', '')
   const slotId = rec.getString('slot_id', '')
+  const ACTIVE = { CONCLUIDO: true, TENTATIVA: true }
   let syncAfter = ''
   if (ACTIVE[status] && slotId) {
-    const already = activeCountForSlot(slotId, rec.getString('appointment_id', ''))
-    if (already >= capacityOf(slotId)) {
+    // capacidade do slot
+    let capacity = 1
+    try {
+      capacity =
+        Number(
+          $app.findFirstRecordByData('agenda_slots', 'slot_id', slotId).get('capacity') ?? 1,
+        ) || 1
+    } catch (_) {}
+    // reservas ativas já existentes no slot (excluindo a própria, se já estava ativa)
+    let already = 0
+    try {
+      const rows = $app.findRecordsByFilter(
+        'lead_appointments',
+        "slot_id = {:slot} && (status = 'CONCLUIDO' || status = 'TENTATIVA')",
+        '',
+        0,
+        0,
+        { slot: slotId },
+      )
+      const selfId = rec.getString('appointment_id', '')
+      for (const r of rows) {
+        if (selfId && r.getString('appointment_id') === selfId) continue
+        already++
+      }
+    } catch (_) {}
+    if (already >= capacity) {
       throw new BadRequestError('Este horário acabou de encher. Escolha outro, por favor.')
     }
     syncAfter = slotId
   }
   e.next()
-  if (syncAfter) syncOccupancy(syncAfter)
+  if (syncAfter) {
+    // sincroniza agenda_slot_occupancy com a contagem real
+    try {
+      let active = 0
+      const rows = $app.findRecordsByFilter(
+        'lead_appointments',
+        "slot_id = {:slot} && (status = 'CONCLUIDO' || status = 'TENTATIVA')",
+        '',
+        0,
+        0,
+        { slot: syncAfter },
+      )
+      active = rows.length
+      let row = null
+      try {
+        row = $app.findFirstRecordByData('agenda_slot_occupancy', 'slot_id', syncAfter)
+      } catch (_) {}
+      if (row) {
+        row.set('active', active)
+        $app.save(row)
+      } else {
+        let capacity = 1
+        try {
+          capacity =
+            Number(
+              $app.findFirstRecordByData('agenda_slots', 'slot_id', syncAfter).get('capacity') ?? 1,
+            ) || 1
+        } catch (_) {}
+        const record = new Record($app.findCollectionByNameOrId('agenda_slot_occupancy'))
+        record.set('slot_id', syncAfter)
+        record.set('capacity', capacity)
+        record.set('active', active)
+        $app.save(record)
+      }
+    } catch (err) {
+      $app.logger().error('occupancy sync falhou (create)', 'slot', syncAfter, 'error', String(err))
+    }
+  }
 }, 'lead_appointments')
 
 // UPDATE: conclusão (TENTATIVA → CONCLUIDO), reescolha de slot (RN-2.06) e desistência
@@ -95,32 +103,124 @@ onRecordUpdate((e) => {
   const origStatus = orig.getString('status', '')
   const slotId = rec.getString('slot_id', '')
   const origSlot = orig.getString('slot_id', '')
+  const ACTIVE = { CONCLUIDO: true, TENTATIVA: true }
   const wasActive = !!ACTIVE[origStatus]
   const isActive = !!ACTIVE[status]
-  let syncNew = ''
-  let syncOld = ''
+  const syncNew = isActive && slotId && !(wasActive && slotId === origSlot) ? slotId : ''
+  const syncOld = wasActive && origSlot && (origSlot !== slotId || !isActive) ? origSlot : ''
   // tornando-se ativa num slot onde ainda não estava ativa → valida capacidade
-  if (isActive && slotId && !(wasActive && slotId === origSlot)) {
-    const already = activeCountForSlot(slotId, rec.getString('appointment_id', ''))
-    if (already >= capacityOf(slotId)) {
+  if (syncNew) {
+    let capacity = 1
+    try {
+      capacity =
+        Number(
+          $app.findFirstRecordByData('agenda_slots', 'slot_id', slotId).get('capacity') ?? 1,
+        ) || 1
+    } catch (_) {}
+    let already = 0
+    try {
+      const rows = $app.findRecordsByFilter(
+        'lead_appointments',
+        "slot_id = {:slot} && (status = 'CONCLUIDO' || status = 'TENTATIVA')",
+        '',
+        0,
+        0,
+        { slot: slotId },
+      )
+      const selfId = rec.getString('appointment_id', '')
+      for (const r of rows) {
+        if (selfId && r.getString('appointment_id') === selfId) continue
+        already++
+      }
+    } catch (_) {}
+    if (already >= capacity) {
       throw new BadRequestError('Este horário acabou de encher. Escolha outro, por favor.')
     }
-    syncNew = slotId
-  }
-  // saiu de um slot onde estava ativa (reescolha) ou desativou o estado (desistência)
-  if (wasActive && origSlot && (origSlot !== slotId || !isActive)) {
-    syncOld = origSlot
   }
   e.next()
-  if (syncNew) syncOccupancy(syncNew)
-  if (syncOld) syncOccupancy(syncOld)
+  const syncOne = (target) => {
+    try {
+      let active = 0
+      const rows = $app.findRecordsByFilter(
+        'lead_appointments',
+        "slot_id = {:slot} && (status = 'CONCLUIDO' || status = 'TENTATIVA')",
+        '',
+        0,
+        0,
+        { slot: target },
+      )
+      active = rows.length
+      let row = null
+      try {
+        row = $app.findFirstRecordByData('agenda_slot_occupancy', 'slot_id', target)
+      } catch (_) {}
+      if (row) {
+        row.set('active', active)
+        $app.save(row)
+      } else {
+        let capacity = 1
+        try {
+          capacity =
+            Number(
+              $app.findFirstRecordByData('agenda_slots', 'slot_id', target).get('capacity') ?? 1,
+            ) || 1
+        } catch (_) {}
+        const record = new Record($app.findCollectionByNameOrId('agenda_slot_occupancy'))
+        record.set('slot_id', target)
+        record.set('capacity', capacity)
+        record.set('active', active)
+        $app.save(record)
+      }
+    } catch (err) {
+      $app.logger().error('occupancy sync falhou (update)', 'slot', target, 'error', String(err))
+    }
+  }
+  if (syncNew) syncOne(syncNew)
+  if (syncOld) syncOne(syncOld)
 }, 'lead_appointments')
 
 // DELETE: remoção de reserva libera a vaga
 onRecordDelete((e) => {
   const rec = e.record
   const slotId = rec.getString('slot_id', '')
+  const ACTIVE = { CONCLUIDO: true, TENTATIVA: true }
   const wasActive = !!ACTIVE[rec.getString('status', '')]
   e.next()
-  if (wasActive && slotId) syncOccupancy(slotId)
+  if (wasActive && slotId) {
+    try {
+      let active = 0
+      const rows = $app.findRecordsByFilter(
+        'lead_appointments',
+        "slot_id = {:slot} && (status = 'CONCLUIDO' || status = 'TENTATIVA')",
+        '',
+        0,
+        0,
+        { slot: slotId },
+      )
+      active = rows.length
+      let row = null
+      try {
+        row = $app.findFirstRecordByData('agenda_slot_occupancy', 'slot_id', slotId)
+      } catch (_) {}
+      if (row) {
+        row.set('active', active)
+        $app.save(row)
+      } else {
+        let capacity = 1
+        try {
+          capacity =
+            Number(
+              $app.findFirstRecordByData('agenda_slots', 'slot_id', slotId).get('capacity') ?? 1,
+            ) || 1
+        } catch (_) {}
+        const record = new Record($app.findCollectionByNameOrId('agenda_slot_occupancy'))
+        record.set('slot_id', slotId)
+        record.set('capacity', capacity)
+        record.set('active', active)
+        $app.save(record)
+      }
+    } catch (err) {
+      $app.logger().error('occupancy sync falhou (delete)', 'slot', slotId, 'error', String(err))
+    }
+  }
 }, 'lead_appointments')
