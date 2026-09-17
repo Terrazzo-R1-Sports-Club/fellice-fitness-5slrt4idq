@@ -27,7 +27,9 @@ migrate(
       fields: [
         { name: 'slot_id', type: 'text', required: true, max: 120 },
         { name: 'capacity', type: 'number', required: true, min: 1 },
-        { name: 'active', type: 'number', required: true, min: 0 },
+        // active NÃO é required: 0 (slot vazio) é estado válido e o PocketBase
+        // trata 0 como blank em number required (causa raiz do "Cannot be blank").
+        { name: 'active', type: 'number', min: 0 },
         { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
         { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true },
       ],
