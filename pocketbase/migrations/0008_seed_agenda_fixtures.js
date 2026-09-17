@@ -174,5 +174,7 @@ migrate(
     remove('agenda_slots', 'slot_id', 'slot-teste-cap1-0830')
     remove('agenda_slots', 'slot_id', 'slot-teste-cap2-1200')
     remove('agenda_slots', 'slot_id', 'slot-teste-bloqueado-1700')
+    // registro de prova ao vivo (criação pública + índice único), criado via API em 2026-09-17
+    remove('lead_appointments', 'appointment_id', 'appt-prova-publica-001')
   },
 )
