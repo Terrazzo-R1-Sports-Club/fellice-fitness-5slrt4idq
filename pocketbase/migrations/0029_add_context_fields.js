@@ -21,7 +21,7 @@ migrate(
         }
       }
       if (!exists) {
-        const field = new Field(name, type, max)
+        const field = new Field({ name: name, type: type, max: max })
         collection.fields.add(field)
       }
     }
