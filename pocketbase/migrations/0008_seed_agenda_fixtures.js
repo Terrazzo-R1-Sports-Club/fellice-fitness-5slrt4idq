@@ -177,5 +177,17 @@ migrate(
     // registros de prova ao vivo (criação pública + índice único), criados via API em 2026-09-17
     remove('lead_appointments', 'appointment_id', 'appt-prova-publica-001')
     remove('lead_appointments', 'appointment_id', 'appt-teste-ricardo-001')
+    // F2-IMP-003: provas ao vivo da página /agendar
+    remove('lead_appointments', 'appointment_id', 'appt-f2imp3-green-001')
+    remove('lead_appointments', 'appointment_id', 'appt-f2imp3-handoff-001')
+    // F2-IMP-004: registros do roteiro RED/GREEN/regressão
+    remove('lead_appointments', 'appointment_id', 'appt-f2imp4-conflito-A')
+    remove('lead_appointments', 'appointment_id', 'appt-f2imp4-conflito-B')
+    remove('lead_appointments', 'appointment_id', 'appt-f2imp4-conflito-B2')
+    remove('lead_appointments', 'appointment_id', 'appt-f2imp4-desiste-C')
+    remove('lead_appointments', 'appointment_id', 'appt-f2imp4-libera-D')
+    remove('lead_appointments', 'appointment_id', 'appt-diagnostico-001')
+    remove('lead_appointment_events', 'event_id', 'evt-f2imp4-conflito-B')
+    remove('lead_appointment_events', 'event_id', 'evt-f2imp4-desiste-C')
   },
 )
