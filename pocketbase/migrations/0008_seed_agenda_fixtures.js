@@ -15,7 +15,9 @@ migrate(
         app.findFirstRecordByData(collection.name, uniqueField, uniqueValue)
       } catch (_) {
         const record = new Record(collection)
-        record.set(data)
+        // JSVM do PocketBase: set exige (chave, valor); objeto único é ignorado
+        // (causa raiz do erro "Cannot be blank" do build anterior).
+        Object.entries(data).forEach(([key, value]) => record.set(key, value))
         app.save(record)
       }
     }

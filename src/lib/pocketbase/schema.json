@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-08T19:26:48.875Z",
+  "generatedAt": "2026-09-17T14:08:13.734Z",
   "collections": [
     {
       "name": "users",
@@ -29,21 +29,29 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "role",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["champion", "consultor"]
+          "selectValues": [
+            "champion",
+            "consultor"
+          ]
         }
       ],
       "indexes": [
@@ -97,14 +105,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -137,7 +150,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["DRAFT", "TESTE", "ATIVA", "DESATIVADA"]
+          "selectValues": [
+            "DRAFT",
+            "TESTE",
+            "ATIVA",
+            "DESATIVADA"
+          ]
         },
         {
           "name": "field_contract",
@@ -156,14 +174,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -305,28 +328,42 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["recebida", "incompleta", "ausente"]
+          "selectValues": [
+            "recebida",
+            "incompleta",
+            "ausente"
+          ]
         },
         {
           "name": "triagem_status",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["EM_ANDAMENTO", "TRIAGEM_CONCLUIDA", "ABANDONADO", "SALVAMENTO_FALHOU"]
+          "selectValues": [
+            "EM_ANDAMENTO",
+            "TRIAGEM_CONCLUIDA",
+            "ABANDONADO",
+            "SALVAMENTO_FALHOU"
+          ]
         },
         {
           "name": "created",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "consentimento",
@@ -371,7 +408,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["FORM_STARTED", "TRIAGEM_CONCLUIDA", "ABANDONADO", "SALVAMENTO_FALHOU"]
+          "selectValues": [
+            "FORM_STARTED",
+            "TRIAGEM_CONCLUIDA",
+            "ABANDONADO",
+            "SALVAMENTO_FALHOU"
+          ]
         },
         {
           "name": "occurred_at",
@@ -390,14 +432,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": []
@@ -514,7 +561,11 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["PENDENTE", "ASSUMIDO", "ENCERRADO_SEM_AGENDAMENTO"]
+          "selectValues": [
+            "PENDENTE",
+            "ASSUMIDO",
+            "ENCERRADO_SEM_AGENDAMENTO"
+          ]
         },
         {
           "name": "dono",
@@ -551,14 +602,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -630,18 +686,327 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
         "CREATE UNIQUE INDEX `idx_handoff_events_event` ON `lead_handoff_events` (`event_id`)"
+      ]
+    },
+    {
+      "name": "agenda_slots",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "update": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "delete": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")"
+      },
+      "fields": [
+        {
+          "name": "slot_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "slot_datetime",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "slot_duration_min",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "capacity",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "ABERTO",
+            "RESERVADO",
+            "BLOQUEADO"
+          ]
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_agenda_slots_slot_id` ON `agenda_slots` (`slot_id`)"
+      ]
+    },
+    {
+      "name": "lead_appointments",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "create": "",
+        "update": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "appointment_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lead_submission_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "form_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "form_version",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "slot_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "slot_datetime",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "slot_duration_min",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telefone_ou_canal_de_retorno",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "localidade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "profissao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "TENTATIVA",
+            "CONCLUIDO",
+            "DESISTENCIA",
+            "ENCAMINHAMENTO_HUMANO"
+          ]
+        },
+        {
+          "name": "conflict_detected",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "handoff_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "concluded_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_lead_appointments_appointment_id` ON `lead_appointments` (`appointment_id`)",
+        "CREATE UNIQUE INDEX `idx_lead_appointments_submission_slot` ON `lead_appointments` (`lead_submission_id`, `slot_id`)"
+      ]
+    },
+    {
+      "name": "lead_appointment_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "create": "",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "appointment_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lead_submission_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "event_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "APPOINTMENT_CREATED",
+            "APPOINTMENT_CONCLUDED",
+            "APPOINTMENT_ABANDONED",
+            "APPOINTMENT_HANDOFF",
+            "APPOINTMENT_CONFLICT"
+          ]
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payload",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_appointment_events_event` ON `lead_appointment_events` (`event_id`)"
       ]
     }
   ]

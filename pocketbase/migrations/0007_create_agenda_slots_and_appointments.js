@@ -79,9 +79,11 @@ migrate(
         { name: 'lead_submission_id', type: 'text', required: true, max: 120 },
         { name: 'form_id', type: 'text', required: true, max: 120 },
         { name: 'form_version', type: 'text', required: true, max: 40 },
-        { name: 'slot_id', type: 'text', required: true, max: 120 },
-        { name: 'slot_datetime', type: 'date', required: true },
-        { name: 'slot_duration_min', type: 'number', required: true, min: 1 },
+        // Slot opcional na tentativa: o encaminhamento humano (RN-2.05) pode nascer
+        // SEM slot (ausência de slots disponíveis). Obrigatório só na conclusão (fluxo).
+        { name: 'slot_id', type: 'text', max: 120 },
+        { name: 'slot_datetime', type: 'date' },
+        { name: 'slot_duration_min', type: 'number', min: 1 },
         { name: 'nome', type: 'text', max: 160 },
         { name: 'telefone_ou_canal_de_retorno', type: 'text', max: 160 },
         { name: 'localidade', type: 'text', max: 200 },
