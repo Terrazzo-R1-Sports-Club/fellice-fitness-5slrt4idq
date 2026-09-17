@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom'
 // grade vazia ou falha → ENCAMINHAMENTO_HUMANO com handoff_reason, sem confirmação falsa.
 // RN-2.06: se o lead volta e escolhe outro slot, a tentativa não confirmada é ATUALIZADA
 // (índice único lead_submission_id+slot_id — contrato F2-IMP-001).
+// F2-IMP-004 debug: capacidade por slot — a página lê a ocupação real (coleção pública
+// agenda_slot_occupancy, migração 0018) e NÃO OFERTA slot cheio (active >= capacity).
 // LGPD: campos mínimos sob execução de serviço solicitado; e-mail opcional e voluntário.
 
 const FORM_ID = 'fellice-captura-01'
@@ -106,8 +108,8 @@ const Agendar = () => {
   }
 
   // RN-2.01: ocupação real por slot — lida da coleção pública agenda_slot_occupancy
-  // (1 registro por slot, campo active = reservas ativas, recalculada pela migração 0018
-  // e mantida pelo fluxo). A página NÃO OFERTA slot cheio (active >= capacity).
+  // (1 registro por slot, campo active = reservas ativas, recalculada pela migração 0018).
+  // A página NÃO OFERTA slot cheio (active >= capacity).
   const loadOccupancy = async () => {
     if (!BACKEND_URL) return
     try {
@@ -267,39 +269,6 @@ const Agendar = () => {
       }
     } finally {
       setSending(false)
-    }
-  }
-
-  // RN-2.01: só oferta slots com vaga real — reservas ativas (CONCLUIDO + TENTATIVA)
-  // por slot contadas contra a capacidade. A contagem usa a lista carregada da grade.
-  const loadOccupancy = async () => {
-    if (!BACKEND_URL) return
-    try {
-      // tentativas ativas são públicas apenas em contagem agregada via filtro;
-      // a leitura da coleção é autenticada, então a ocupação vem dos eventos públicos:
-      // cada reserva ativa tem APPOINTMENT_CREATED sem ABANDONED posterior.
-      const response = await fetch(
-        `${BACKEND_URL}/api/collections/lead_appointment_events/records?filter=(event_type='APPOINTMENT_CREATED')&perPage=500`,
-      )
-      if (!response.ok) return
-      const data = await response.json()
-      const abandoned = new Set(
-        (data.items || [])
-          .filter(
-            (e: { event_type: string; appointment_id: string }) =>
-              e.event_type === 'APPOINTMENT_ABANDONED',
-          )
-          .map((e: { appointment_id: string }) => e.appointment_id),
-      )
-      const occupied: Record<string, number> = {}
-      for (const ev of data.items || []) {
-        if (ev.event_type !== 'APPOINTMENT_CREATED' || abandoned.has(ev.appointment_id)) continue
-        const slotId = ev.payload?.slot_id
-        if (slotId) occupied[slotId] = (occupied[slotId] || 0) + 1
-      }
-      setOccupancy(occupied)
-    } catch (err) {
-      console.warn('Não foi possível calcular a ocupação da grade.', err)
     }
   }
 
