@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T20:51:10.914Z",
+  "generatedAt": "2026-09-17T20:59:03.141Z",
   "collections": [
     {
       "name": "users",
@@ -966,6 +966,24 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "dono",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assumed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsavel_anterior",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1012,7 +1030,8 @@
             "APPOINTMENT_CONCLUDED",
             "APPOINTMENT_ABANDONED",
             "APPOINTMENT_HANDOFF",
-            "APPOINTMENT_CONFLICT"
+            "APPOINTMENT_CONFLICT",
+            "APPOINTMENT_ASSUMED"
           ]
         },
         {
