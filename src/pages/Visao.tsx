@@ -71,16 +71,38 @@ const Visao = () => {
       setAppointments(result)
     } catch (err) {
       console.error(err)
-      setError(
-        'Não foi possível carregar a visão. Confirme que seu usuário tem o papel autorizado.',
-      )
+      // Sessão órfã (usuário removido/token inválido): limpa e volta ao login —
+      // a página nunca deve fingir que está autenticada com sessão inválida.
+      const status = (err as { status?: number })?.status
+      if (status === 401 || status === 403) {
+        pb.authStore.clear()
+        setAppointments([])
+        setError('Sua sessão expirou. Entre novamente, por favor.')
+      } else {
+        setError(
+          'Não foi possível carregar a visão. Confirme que seu usuário tem o papel autorizado.',
+        )
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (pb.authStore.isValid) load()
+    const bootstrap = async () => {
+      if (!pb.authStore.isValid) return
+      try {
+        // valida a sessão contra o servidor (token de usuário removido é rejeitado)
+        await pb.collection('users').authRefresh()
+        await load()
+      } catch (err) {
+        console.error(err)
+        pb.authStore.clear()
+        setAppointments([])
+        setLoginError('Sua sessão anterior não é mais válida. Entre com suas credenciais.')
+      }
+    }
+    bootstrap()
   }, [])
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
