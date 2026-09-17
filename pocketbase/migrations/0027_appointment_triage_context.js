@@ -20,10 +20,15 @@ migrate(
     ]
     for (const f of fields) {
       // upsert de campo: ignora se já existir
+      let exists = false
       try {
         collection.fields.getByName(f.name)
+        exists = true
       } catch (_) {
-        collection.fields.add(new Field(f))
+        exists = false
+      }
+      if (!exists) {
+        collection.fields.add(new Field({ name: f.name, type: f.type, max: f.max }))
       }
     }
     app.save(collection)
