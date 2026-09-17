@@ -28,6 +28,9 @@ type Appointment = {
   handoff_reason?: string
   created_at: string
   concluded_at?: string
+  dono?: string
+  assumed_at?: string
+  responsavel_anterior?: string
   objetivo?: string
   proximidade?: string
   ocupacao?: string
@@ -59,6 +62,14 @@ const Visao = () => {
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<string>('TODOS')
   const [detail, setDetail] = useState<Appointment | null>(null)
+  const [assuming, setAssuming] = useState('')
+  const [myUserId, setMyUserId] = useState('')
+
+  useEffect(() => {
+    if (pb.authStore.isValid) {
+      setMyUserId(pb.authStore.record?.id || '')
+    }
+  }, [])
 
   const load = async () => {
     if (!pb.authStore.isValid) return
@@ -104,6 +115,41 @@ const Visao = () => {
     }
     bootstrap()
   }, [])
+
+  // F2-IMP-007 / CA-2.07: fila única — o primeiro consultor disponível assume a
+  // tentativa em ENCAMINHAMENTO_HUMANO sem dono; o sistema registra dono + assumed_at
+  // (assumed_at é gravado pelo servidor) + evento APPOINTMENT_ASSUMED na trilha.
+  const assume = async (appt: Appointment) => {
+    if (!pb.authStore.isValid) return
+    setAssuming(appt.id)
+    setError('')
+    try {
+      const now = new Date().toISOString()
+      await pb.collection('lead_appointments').update(appt.id, {
+        dono: myUserId,
+      })
+      await pb.collection('lead_appointment_events').create({
+        event_id: crypto.randomUUID(),
+        appointment_id: appt.appointment_id,
+        lead_submission_id: appt.lead_submission_id,
+        event_type: 'APPOINTMENT_ASSUMED',
+        occurred_at: now,
+        actor_id: myUserId,
+        payload: { from: 'ENCAMINHAMENTO_HUMANO', dono: myUserId },
+      })
+      await load()
+    } catch (err) {
+      console.error(err)
+      // CA-2.09: falha não muda estado — a pendência fica visível como erro no card
+      setError(
+        err instanceof Error
+          ? `Não foi possível assumir: ${err.message}`
+          : 'Não foi possível assumir a tentativa.',
+      )
+    } finally {
+      setAssuming('')
+    }
+  }
 
   const login = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -311,6 +357,22 @@ const Visao = () => {
                       <p className="mt-4 rounded-xl bg-orange-50 p-3 text-sm text-orange-800 dark:bg-orange-950/50 dark:text-orange-300">
                         <strong>Motivo do encaminhamento:</strong> {appt.handoff_reason}
                       </p>
+                    )}
+                    {appt.status === 'ENCAMINHAMENTO_HUMANO' && (
+                      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                        {appt.dono
+                          ? `Assumida por ${appt.dono === myUserId ? 'você' : appt.dono} em ${appt.assumed_at ? new Date(appt.assumed_at).toLocaleString('pt-BR') : '—'}`
+                          : 'Sem dono — disponível para assunção (fila única).'}
+                      </p>
+                    )}
+                    {appt.status === 'ENCAMINHAMENTO_HUMANO' && !appt.dono && (
+                      <button
+                        disabled={assuming === appt.id}
+                        onClick={() => assume(appt)}
+                        className="mt-3 rounded-xl bg-orange-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                      >
+                        {assuming === appt.id ? 'Assumindo...' : 'Assumir caso'}
+                      </button>
                     )}
                     <button
                       onClick={() => setDetail(appt)}
