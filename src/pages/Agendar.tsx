@@ -80,6 +80,7 @@ const Agendar = () => {
     email: '',
   })
   const leadSubmissionId = useRef(crypto.randomUUID())
+  const [occupancy, setOccupancy] = useState<Record<string, number>>({})
 
   const loadSlots = async () => {
     if (!BACKEND_URL) {
@@ -104,8 +105,30 @@ const Agendar = () => {
     }
   }
 
+  // RN-2.01: ocupação real por slot — lida da coleção pública agenda_slot_occupancy
+  // (1 registro por slot, campo active = reservas ativas, recalculada pela migração 0018
+  // e mantida pelo fluxo). A página NÃO OFERTA slot cheio (active >= capacity).
+  const loadOccupancy = async () => {
+    if (!BACKEND_URL) return
+    try {
+      const response = await fetch(
+        `${BACKEND_URL}/api/collections/agenda_slot_occupancy/records?perPage=500`,
+      )
+      if (!response.ok) return
+      const data = await response.json()
+      const map: Record<string, number> = {}
+      for (const row of data.items || []) {
+        map[row.slot_id] = row.active || 0
+      }
+      setOccupancy(map)
+    } catch (err) {
+      console.warn('Não foi possível carregar a ocupação da grade.', err)
+    }
+  }
+
   useEffect(() => {
     loadSlots()
+    loadOccupancy()
   }, [])
 
   const byDay = slots.reduce<Record<string, Slot[]>>((acc, slot) => {
@@ -280,6 +303,19 @@ const Agendar = () => {
     }
   }
 
+  const chooseSlot = (slot: Slot) => {
+    // RN-2.01/CA-2.02: bloqueia slot cheio no momento do clique (defesa em profundidade —
+    // a grade já esconde, mas a ocupação pode ter mudado desde o carregamento)
+    const active = occupancy[slot.slot_id] || 0
+    if (active >= slot.capacity) {
+      setError('Este horário acabou de encher. Escolha outro, por favor.')
+      return
+    }
+    setSelected(slot)
+    setError('')
+    setStep('dados')
+  }
+
   const requestHuman = async () => {
     setSending(true)
     setError('')
@@ -355,20 +391,27 @@ const Agendar = () => {
                     {formatDay(`${day} 12:00:00.000Z`)}
                   </h2>
                   <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {daySlots.map((slot) => (
-                      <button
-                        key={slot.slot_id}
-                        onClick={() => chooseSlot(slot)}
-                        className="rounded-xl border border-orange-100 bg-white px-3 py-3 text-center font-bold text-slate-800 transition hover:border-orange-400 hover:bg-orange-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-orange-600 dark:hover:bg-slate-800"
-                      >
-                        {formatTime(slot.slot_datetime)}
-                        {slot.capacity > 1 && (
-                          <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
-                            2 vagas
-                          </span>
-                        )}
-                      </button>
-                    ))}
+                    {daySlots.map((slot) => {
+                      // RN-2.01: slot cheio (ocupação >= capacidade) não é ofertado
+                      const active = occupancy[slot.slot_id] || 0
+                      const full = active >= slot.capacity
+                      const remaining = Math.max(slot.capacity - active, 0)
+                      if (full) return null
+                      return (
+                        <button
+                          key={slot.slot_id}
+                          onClick={() => chooseSlot(slot)}
+                          className="rounded-xl border border-orange-100 bg-white px-3 py-3 text-center font-bold text-slate-800 transition hover:border-orange-400 hover:bg-orange-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-orange-600 dark:hover:bg-slate-800"
+                        >
+                          {formatTime(slot.slot_datetime)}
+                          {slot.capacity > 1 && (
+                            <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+                              {remaining} vagas
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
