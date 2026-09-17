@@ -7,6 +7,7 @@ import { ThemeProvider } from '@/components/ThemeProvider'
 import Index from './pages/Index'
 import Queue from './pages/Queue'
 import Agendar from './pages/Agendar'
+import Visao from './pages/Visao'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/agendar" element={<Agendar />} />
             <Route path="/fila" element={<Queue />} />
+            <Route path="/visao" element={<Visao />} />
             {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
           </Route>
           <Route path="*" element={<NotFound />} />
