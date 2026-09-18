@@ -120,13 +120,21 @@ const Visao = () => {
   // tentativa em ENCAMINHAMENTO_HUMANO sem dono; o sistema registra dono + assumed_at
   // (assumed_at é gravado pelo servidor) + evento APPOINTMENT_ASSUMED na trilha.
   const assume = async (appt: Appointment) => {
-    if (!pb.authStore.isValid) return
+    // DEBUG F2-IMP-007: o id do usuário NÃO vem de estado capturado no mount —
+    // o login acontece na mesma página (sem remount), então o estado ficaria vazio
+    // e a assunção gravaria dono "" (evento com actor_id vazio, caso nunca assumido).
+    // Ler o authStore NO MOMENTO do clique; sem usuário válido, recusar.
+    const userId = pb.authStore.record?.id || ''
+    if (!pb.authStore.isValid || !userId) {
+      setError('Sessão inválida — entre novamente antes de assumir o caso.')
+      return
+    }
     setAssuming(appt.id)
     setError('')
     try {
       const now = new Date().toISOString()
       await pb.collection('lead_appointments').update(appt.id, {
-        dono: myUserId,
+        dono: userId,
       })
       await pb.collection('lead_appointment_events').create({
         event_id: crypto.randomUUID(),
@@ -134,9 +142,10 @@ const Visao = () => {
         lead_submission_id: appt.lead_submission_id,
         event_type: 'APPOINTMENT_ASSUMED',
         occurred_at: now,
-        actor_id: myUserId,
-        payload: { from: 'ENCAMINHAMENTO_HUMANO', dono: myUserId },
+        actor_id: userId,
+        payload: { from: 'ENCAMINHAMENTO_HUMANO', dono: userId },
       })
+      setMyUserId(userId)
       await load()
     } catch (err) {
       console.error(err)
