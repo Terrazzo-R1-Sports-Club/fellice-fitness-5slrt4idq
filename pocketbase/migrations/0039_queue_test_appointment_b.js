@@ -5,11 +5,18 @@
 
 migrate(
   (app) => {
+    // idempotente: se a fixture já existe, nada a fazer
+    try {
+      app.findFirstRecordByData('lead_appointments', 'appointment_id', 'appt-teste-fila-007b')
+      return
+    } catch (_) {
+      // não existe — prosseguir com a criação
+    }
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19) + '.000Z'
     const appts = app.findCollectionByNameOrId('lead_appointments')
     const appt = new Record(appts)
     appt.set('appointment_id', 'appt-teste-fila-007b')
-    appt.set('lead_submission_id', 'sub-teste-0002')
+    appt.set('lead_submission_id', 'sub-teste-0002b')
     appt.set('form_id', 'fellice-captura-01')
     appt.set('form_version', 'v1.0.0')
     appt.set('slot_id', '')
