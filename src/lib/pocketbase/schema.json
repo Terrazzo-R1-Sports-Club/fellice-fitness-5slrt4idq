@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-18T12:39:10.902Z",
+  "generatedAt": "2026-09-18T13:43:04.021Z",
   "collections": [
     {
       "name": "users",
@@ -51,7 +51,8 @@
           "selectValues": [
             "champion",
             "consultor",
-            "gestao"
+            "gestao",
+            "supervisora"
           ]
         }
       ],
@@ -786,10 +787,10 @@
       "name": "lead_appointments",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
-        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || (@request.auth.role = \"consultor\" && (dono = @request.auth.id || status = \"ENCAMINHAMENTO_HUMANO\")))",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || (@request.auth.role = \"consultor\" && (dono = @request.auth.id || status = \"ENCAMINHAMENTO_HUMANO\")))",
         "create": "",
-        "update": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "update": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"consultor\")",
         "delete": null
       },
       "fields": [
@@ -985,6 +986,42 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "turno_origem",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "MANHA",
+            "TARDE",
+            "NOITE",
+            "FORA_TURNO"
+          ]
+        },
+        {
+          "name": "turno_fim_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "escalated_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "closed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo_encerramento",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -996,8 +1033,8 @@
       "name": "lead_appointment_events",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
-        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"consultor\")",
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"consultor\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"consultor\")",
         "create": "",
         "update": null,
         "delete": null
@@ -1032,7 +1069,10 @@
             "APPOINTMENT_ABANDONED",
             "APPOINTMENT_HANDOFF",
             "APPOINTMENT_CONFLICT",
-            "APPOINTMENT_ASSUMED"
+            "APPOINTMENT_ASSUMED",
+            "APPOINTMENT_ESCALATED",
+            "APPOINTMENT_REASSIGNED",
+            "APPOINTMENT_CLOSED"
           ]
         },
         {
@@ -1128,6 +1168,152 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX `idx_occupancy_slot` ON `agenda_slot_occupancy` (`slot_id`)"
+      ]
+    },
+    {
+      "name": "lead_queue_settings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"consultor\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"consultor\")",
+        "create": null,
+        "update": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\")",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "singleton_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_queue_settings_singleton` ON `lead_queue_settings` (`singleton_id`)"
+      ]
+    },
+    {
+      "name": "lead_queue_control_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\")",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "action",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "ROLLBACK",
+            "RESTORE"
+          ]
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "previous_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_queue_control_events_event` ON `lead_queue_control_events` (`event_id`)"
       ]
     }
   ]
