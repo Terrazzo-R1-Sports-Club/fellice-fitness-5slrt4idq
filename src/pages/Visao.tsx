@@ -532,21 +532,15 @@ const Visao = () => {
                         </p>
                         <input
                           aria-label="Motivo da ação operacional"
-                          value={operating === appt.id ? operationReason : ''}
-                          onChange={(e) => {
-                            setOperating(appt.id)
-                            setOperationReason(e.target.value)
-                          }}
+                          value={operationReason}
+                          onChange={(e) => setOperationReason(e.target.value)}
                           placeholder="Motivo obrigatório"
                           className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950"
                         />
                         <input
                           aria-label="Novo responsável"
-                          value={operating === appt.id ? targetOwner : ''}
-                          onChange={(e) => {
-                            setOperating(appt.id)
-                            setTargetOwner(e.target.value)
-                          }}
+                          value={targetOwner}
+                          onChange={(e) => setTargetOwner(e.target.value)}
                           placeholder="ID do novo responsável (só reatribuição)"
                           className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950"
                         />
