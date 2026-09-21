@@ -6,10 +6,20 @@ onRecordUpdate((e) => {
   const rec = e.record
   const orig = rec.original()
   const operation = rec.getString('queue_operation', '')
-  const formalReassignment = operation === 'REASSIGN'
   const origStatus = orig.getString('status', '')
   const origDono = orig.getString('dono', '')
   const newDono = rec.getString('dono', '')
+  // DEBUG r1 (2026-09-21): a flag formal (queue_operation, campo oculto) não ficou
+  // visível ao hook de modelo durante o save da rota atômica no JSVM — a reatribuição
+  // formal era bloqueada como troca direta de dono. A rota também deixa a impressão
+  // digital da operação em responsavel_anterior = dono anterior (campo visível, e
+  // blindado contra PATCH pela protect_queue_update), reconhecida aqui como formal.
+  const formalReassignment =
+    operation === 'REASSIGN' ||
+    (origDono !== '' &&
+      newDono !== '' &&
+      newDono !== origDono &&
+      rec.getString('responsavel_anterior', '') === origDono)
 
   if (newDono && !origDono) {
     if (origStatus !== 'ENCAMINHAMENTO_HUMANO') {
