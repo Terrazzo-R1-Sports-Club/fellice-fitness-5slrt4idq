@@ -66,7 +66,6 @@ const Visao = () => {
   const [filter, setFilter] = useState<string>('TODOS')
   const [detail, setDetail] = useState<Appointment | null>(null)
   const [assuming, setAssuming] = useState('')
-  const [myUserId, setMyUserId] = useState('')
   const [operating, setOperating] = useState('')
   const [operationReason, setOperationReason] = useState('')
   const [targetOwner, setTargetOwner] = useState('')
@@ -74,11 +73,10 @@ const Visao = () => {
   const [rollbackReason, setRollbackReason] = useState('')
   const [myRole, setMyRole] = useState('')
 
-  useEffect(() => {
-    if (pb.authStore.isValid) {
-      setMyUserId(pb.authStore.record?.id || '')
-    }
-  }, [])
+  // Identidade lida do authStore NO RENDER — nunca estado capturado no mount:
+  // login/logout na mesma montagem não podem deixar a comparação "por você"
+  // obsoleta (debug F2-IMP-009 r1 — mesma família do debug da F2-IMP-007 r1).
+  const myUserId = pb.authStore.isValid ? pb.authStore.record?.id || '' : ''
 
   const load = async () => {
     if (!pb.authStore.isValid) return
@@ -218,7 +216,6 @@ const Visao = () => {
         }),
         headers: { 'Content-Type': 'application/json' },
       })
-      setMyUserId(userId)
       await load()
     } catch (err) {
       console.error(err)
