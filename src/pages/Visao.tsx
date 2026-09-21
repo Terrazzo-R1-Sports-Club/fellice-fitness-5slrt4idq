@@ -490,6 +490,14 @@ const Visao = () => {
                             ? `Assumida por ${appt.dono === myUserId ? 'você' : appt.dono} em ${appt.assumed_at ? new Date(appt.assumed_at).toLocaleString('pt-BR') : '—'}`
                             : 'Sem dono — disponível para assunção (fila única).'}
                         </p>
+                        {appt.responsavel_anterior && (
+                          <p>
+                            Reatribuída — responsável anterior:{' '}
+                            {appt.responsavel_anterior === myUserId
+                              ? 'você'
+                              : appt.responsavel_anterior}
+                          </p>
+                        )}
                         {appt.turno_origem && (
                           <p>
                             Turno de origem: {appt.turno_origem} · fim:{' '}
