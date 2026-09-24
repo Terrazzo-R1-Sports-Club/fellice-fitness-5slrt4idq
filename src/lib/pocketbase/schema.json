@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T17:33:53.456Z",
+  "generatedAt": "2026-09-24T20:13:11.757Z",
   "collections": [
     {
       "name": "users",
@@ -1314,6 +1314,152 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX `idx_queue_control_events_event` ON `lead_queue_control_events` (`event_id`)"
+      ]
+    },
+    {
+      "name": "lead_funnel_settings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\")",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "singleton_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_lead_funnel_settings_singleton` ON `lead_funnel_settings` (`singleton_id`)"
+      ]
+    },
+    {
+      "name": "lead_funnel_control_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\")",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "action",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "ROLLBACK",
+            "RESTORE"
+          ]
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "previous_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_lead_funnel_control_event` ON `lead_funnel_control_events` (`event_id`)"
       ]
     }
   ]
