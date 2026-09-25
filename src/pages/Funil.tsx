@@ -136,12 +136,17 @@ const Funnel = () => {
       await pb.collection('users').authWithPassword(email, password)
       if (!allowedRoles.includes(String(pb.authStore.record?.role || ''))) {
         pb.authStore.clear()
-        throw new Error('Papel não autorizado')
+        setLoginError(
+          'Autenticação realizada, mas este papel não tem acesso aos agregados da consolidação. Use Champion, Gestão ou Supervisora.',
+        )
+        return
       }
       await load()
     } catch (err) {
       console.error(err)
-      setLoginError('Login inválido ou papel sem acesso aos agregados da consolidação.')
+      setLoginError(
+        'Não foi possível autenticar. Verifique se a conta existe neste ambiente e se a senha está correta; por segurança, o sistema não distingue conta inexistente de senha incorreta.',
+      )
     } finally {
       setLoginBusy(false)
     }
