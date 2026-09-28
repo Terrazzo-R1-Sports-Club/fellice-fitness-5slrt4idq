@@ -9,6 +9,7 @@ import Queue from './pages/Queue'
 import Agendar from './pages/Agendar'
 import Visao from './pages/Visao'
 import Funil from './pages/Funil'
+import Dashboard from './pages/Dashboard'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/fila" element={<Queue />} />
             <Route path="/visao" element={<Visao />} />
             <Route path="/funil" element={<Funil />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
           </Route>
           <Route path="*" element={<NotFound />} />
