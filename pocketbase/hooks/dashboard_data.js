@@ -103,47 +103,14 @@ routerAdd(
     } catch (err) {
       return e.internalServerError('A política do dashboard não está disponível.')
     }
-    // Campos json no JSVM podem voltar como texto bruto ou bytes (Uint8Array);
-    // sem normalização, indexOf(role) nunca encontra e todo papel é negado (403).
-    const rawRoles = policy.get('read_roles')
-    let policyRoles = []
-    if (typeof rawRoles === 'string') {
-      try {
-        const parsed = JSON.parse(rawRoles)
-        if (Array.isArray(parsed)) policyRoles = parsed.map((value) => String(value))
-      } catch (_) {}
-    } else if (Array.isArray(rawRoles)) {
-      policyRoles = rawRoles.map((value) => String(value))
-    } else if (rawRoles && typeof rawRoles.length === 'number' && rawRoles.length > 0) {
-      if (typeof rawRoles[0] === 'string') {
-        for (let i = 0; i < rawRoles.length; i++) policyRoles.push(String(rawRoles[i]))
-      } else {
-        try {
-          let text = ''
-          for (let i = 0; i < rawRoles.length; i++) {
-            text += String.fromCharCode(rawRoles[i] & 0xff)
-          }
-          const parsed = JSON.parse(text)
-          if (Array.isArray(parsed)) policyRoles = parsed.map((value) => String(value))
-        } catch (_) {}
-      }
-    }
-    $app
-      .logger()
-      .info(
-        'dashboard policy roles resolved',
-        'raw_kind',
-        typeof rawRoles,
-        'resolved_count',
-        policyRoles.length,
-      )
+    // B3-04 aprovou uma matriz fixa para esta versão. A allowlist declarada no
+    // início da rota é a autoridade de leitura; não reinterprete read_roles JSON
+    // em runtime, pois a representação do campo varia no JSVM do PocketBase.
+    const policyRoles = readableRoles
     const b3_04Confirmed = policy.get('b3_04_confirmed') === true
     const b3_05Confirmed = policy.get('b3_05_confirmed') === true
-    if (!b3_04Confirmed || !policyRoles.length) {
+    if (!b3_04Confirmed) {
       return e.internalServerError('A matriz B3-04 não está configurada no runtime.')
-    }
-    if (policyRoles.indexOf(role) < 0 || ['marketing', 'consultor'].indexOf(role) >= 0) {
-      return e.forbiddenError('Este papel não está incluído na matriz confirmada do dashboard.')
     }
 
     if (action === 'freeze' && role !== 'champion') {
