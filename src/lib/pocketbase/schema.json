@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-28T21:36:27.111Z",
+  "generatedAt": "2026-09-30T18:00:50.138Z",
   "collections": [
     {
       "name": "users",
@@ -7,8 +7,8 @@
       "apiRules": {
         "list": "id = @request.auth.id",
         "view": "id = @request.auth.id",
-        "create": "",
-        "update": "id = @request.auth.id",
+        "create": "@request.body.role:isset = false",
+        "update": "id = @request.auth.id && @request.body.role:changed = false",
         "delete": "id = @request.auth.id"
       },
       "fields": [
@@ -53,7 +53,8 @@
             "consultor",
             "gestao",
             "supervisora",
-            "marketing"
+            "marketing",
+            "subgerente"
           ]
         }
       ],
@@ -1570,6 +1571,12 @@
             "onCreate",
             "onUpdate"
           ]
+        },
+        {
+          "name": "b3_05_coverage_threshold",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1764,6 +1771,51 @@
             "onCreate",
             "onUpdate"
           ]
+        },
+        {
+          "name": "status_calculo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "CALCULAVEL",
+            "NAO_CALCULAVEL"
+          ]
+        },
+        {
+          "name": "status_suficiencia",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "SUFICIENTE",
+            "INSUFICIENTE",
+            "NAO_CALCULAVEL"
+          ]
+        },
+        {
+          "name": "cobertura_suficiencia",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "submissoes_suficientes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "limiar_cobertura",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "period_timezone",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

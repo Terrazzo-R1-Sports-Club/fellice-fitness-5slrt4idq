@@ -9,7 +9,7 @@ routerAdd(
     const actor = e.auth
     if (!actor) return e.unauthorizedError('Autenticação necessária.')
     const role = actor.getString('role', '')
-    const readableRoles = ['champion', 'gestao', 'supervisora', 'marketing']
+    const readableRoles = ['champion', 'gestao', 'supervisora', 'subgerente']
     if (readableRoles.indexOf(role) < 0) {
       return e.forbiddenError('Sem permissão para consultar os agregados do dashboard.')
     }
@@ -29,7 +29,20 @@ routerAdd(
       `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
     let fromParam = String(body.from || '').trim()
     let toParam = String(body.to || '').trim()
-    if (!fromParam && !toParam) {
+    if (action === 'freeze') {
+      // Congelamento B3-05: último mês civil completo no fuso local da unidade (UTC-03).
+      const localNow = new Date(now.getTime() - 3 * 60 * 60 * 1000)
+      const currentMonthStart = new Date(
+        Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), 1),
+      )
+      const previousMonthStart = new Date(
+        Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth() - 1, 1),
+      )
+      const previousMonthEnd = new Date(currentMonthStart)
+      previousMonthEnd.setUTCDate(0)
+      fromParam = toDateInput(previousMonthStart)
+      toParam = toDateInput(previousMonthEnd)
+    } else if (!fromParam && !toParam) {
       const fromDefault = new Date(todayStart)
       fromDefault.setUTCDate(fromDefault.getUTCDate() - 29)
       fromParam = toDateInput(fromDefault)
@@ -38,7 +51,7 @@ routerAdd(
     if (!datePattern.test(fromParam) || !datePattern.test(toParam)) {
       return e.badRequestError('from e to devem usar o formato YYYY-MM-DD.')
     }
-    const fromDate = new Date(`${fromParam}T00:00:00.000Z`)
+    let fromDate = new Date(`${fromParam}T00:00:00.000Z`)
     const toDay = new Date(`${toParam}T00:00:00.000Z`)
     if (
       Number.isNaN(fromDate.getTime()) ||
@@ -50,18 +63,20 @@ routerAdd(
     ) {
       return e.badRequestError('O período informado é inválido ou está no futuro.')
     }
-    const toExclusive = new Date(toDay)
+    let toExclusive = new Date(toDay)
     toExclusive.setUTCDate(toExclusive.getUTCDate() + 1)
+    if (action === 'freeze') {
+      // Datas civis do baseline começam à meia-noite local de Salvador/Bahia.
+      fromDate = new Date(fromDate.getTime() + 3 * 60 * 60 * 1000)
+      toExclusive = new Date(toExclusive.getTime() + 3 * 60 * 60 * 1000)
+    }
     const periodDays = Math.round((toExclusive.getTime() - fromDate.getTime()) / 86400000)
     if (periodDays > 366) {
       return e.badRequestError('O período máximo para consulta é de 366 dias.')
     }
 
     const fromIso = fromDate.toISOString()
-    const period = {
-      from: fromIso.slice(0, 10),
-      to: new Date(toExclusive.getTime() - 1).toISOString().slice(0, 10),
-    }
+    const period = { from: fromParam, to: toParam }
     const isWithinPeriod = (value) => {
       const raw = String(value || '').replace(' ', 'T')
       const timestamp = Date.parse(raw)
@@ -91,22 +106,10 @@ routerAdd(
     const policyRoles = policy.get('read_roles') || []
     const b3_04Confirmed = policy.get('b3_04_confirmed') === true
     const b3_05Confirmed = policy.get('b3_05_confirmed') === true
-    const marketingAllowed =
-      b3_04Confirmed &&
-      policy.get('b3_04_marketing_aggregates_only') === true &&
-      policyRoles.indexOf('marketing') >= 0
-    const previewMode = !b3_04Confirmed
-    const safePreviewRoles = ['champion', 'gestao', 'supervisora']
-    const proposedCriterion =
-      'Congelamento manual pelo Champion; janela móvel dos últimos 30 dias corridos; numerador de agendamentos concluídos e denominador de encaminhamentos humanos no mesmo período; registrar fórmula, período, cobertura e versão; cada nova apuração cria nova versão append-only; nenhuma meta inferida.'
-
-    if (role === 'marketing' && !marketingAllowed) {
-      return e.forbiddenError('Acesso de Marketing depende da confirmação da matriz B3-04.')
+    if (!b3_04Confirmed || !policyRoles.length) {
+      return e.internalServerError('A matriz B3-04 não está configurada no runtime.')
     }
-    if (previewMode && safePreviewRoles.indexOf(role) < 0) {
-      return e.forbiddenError('Prévia sintética indisponível para este papel.')
-    }
-    if (!previewMode && policyRoles.indexOf(role) < 0) {
+    if (policyRoles.indexOf(role) < 0 || ['marketing', 'consultor'].indexOf(role) >= 0) {
       return e.forbiddenError('Este papel não está incluído na matriz confirmada do dashboard.')
     }
 
@@ -121,16 +124,8 @@ routerAdd(
       })
     }
 
-    const expectedFrom = new Date(todayStart)
-    expectedFrom.setUTCDate(expectedFrom.getUTCDate() - 29)
-    if (
-      action === 'freeze' &&
-      (periodDays !== 30 ||
-        fromParam !== toDateInput(expectedFrom) ||
-        toParam !== toDateInput(todayStart))
-    ) {
-      return e.badRequestError('O baseline segue a janela móvel dos últimos 30 dias corridos.')
-    }
+    // B3-02 mantém o dashboard na janela móvel de 30 dias. B3-05 congela
+    // somente o último mês civil completo no fuso local da unidade (UTC-03).
 
     let funnelSettings = null
     try {
@@ -157,27 +152,6 @@ routerAdd(
     let handoffRows = readSource('lead_handoffs', 'created_at')
     let appointmentRows = readSource('lead_appointments', 'created_at')
     let appointmentEventRows = readSource('lead_appointment_events', 'occurred_at')
-
-    // Antes da confirmação B3-04, a prévia é estritamente sintética. Nunca agrega
-    // submissões, encaminhamentos ou agendamentos reais enquanto a matriz está pendente.
-    if (previewMode) {
-      const keep = (rows, predicate) => (rows ? rows.filter(predicate) : null)
-      const formId = 'spec3002-dashboard-form'
-      formRows = keep(formRows, (row) => row.getString('form_id', '') === formId)
-      versionRows = keep(versionRows, (row) => row.getString('form_id', '') === formId)
-      submissionRows = keep(submissionRows, (row) =>
-        row.getString('lead_submission_id', '').startsWith('spec3002-sub-'),
-      )
-      handoffRows = keep(handoffRows, (row) =>
-        row.getString('handoff_id', '').startsWith('spec3002-handoff-'),
-      )
-      appointmentRows = keep(appointmentRows, (row) =>
-        row.getString('appointment_id', '').startsWith('spec3002-appointment-'),
-      )
-      appointmentEventRows = keep(appointmentEventRows, (row) =>
-        row.getString('appointment_id', '').startsWith('spec3002-appointment-'),
-      )
-    }
 
     const formNames = Object.create(null)
     if (formRows) {
@@ -243,6 +217,7 @@ routerAdd(
     const periodSubmissionIds = Object.create(null)
     const validityCounts = { vigencia_confirmada: 0, nao_verificavel: 0, fora_da_vigencia: 0 }
     const attributionCounts = { recebida: 0, incompleta: 0, ausente: 0, desconhecida: 0 }
+    let sufficientSubmissions = 0
     if (submissionRows) {
       for (const row of submissionRows) {
         const submissionId = row.getString('lead_submission_id', '').trim() || row.id
@@ -260,6 +235,23 @@ routerAdd(
         submissionsById[submissionId] = meta
         if (!isWithinPeriod(meta.started_at) || periodSubmissionIds[submissionId]) continue
         periodSubmissionIds[submissionId] = meta
+        const namePresent = row.getString('nome', '').trim().length > 0
+        const channel = row.getString('canal_de_retorno', '').trim()
+        let phoneDigits = channel.indexOf('@') >= 0 ? '' : channel.replace(/\D/g, '')
+        if (
+          (phoneDigits.length === 12 || phoneDigits.length === 13) &&
+          phoneDigits.slice(0, 2) === '55'
+        ) {
+          phoneDigits = phoneDigits.slice(2)
+        }
+        const ddd = Number(phoneDigits.slice(0, 2))
+        const phoneRecognizable =
+          (phoneDigits.length === 10 || phoneDigits.length === 11) && ddd >= 11 && ddd <= 99
+        const proximity = row.getString('proximidade', '').trim()
+        const proximityEligible =
+          proximity === 'Moro no Itaigara ou em bairros vizinhos' ||
+          proximity === 'Trabalho na região do Itaigara'
+        if (namePresent && phoneRecognizable && proximityEligible) sufficientSubmissions++
         validityCounts[meta.validity.status]++
         if (status === 'recebida') attributionCounts.recebida++
         else if (status === 'incompleta') attributionCounts.incompleta++
@@ -468,6 +460,20 @@ routerAdd(
     const partial = readErrors.length > 0
     const rate = !partial && denominator > 0 ? numerator / denominator : null
     const coverage = totalSubmissions > 0 ? attributedSubmissions / totalSubmissions : null
+    const configuredThreshold = policy.get('b3_05_coverage_threshold')
+    const sufficiencyThreshold =
+      configuredThreshold === null || configuredThreshold === undefined
+        ? 0.5
+        : Number(configuredThreshold)
+    const sufficiencyCoverage =
+      totalSubmissions > 0 ? sufficientSubmissions / totalSubmissions : null
+    const sufficiencyStatus =
+      totalSubmissions === 0 || sufficiencyCoverage === null
+        ? 'NAO_CALCULAVEL'
+        : sufficiencyCoverage >= sufficiencyThreshold
+          ? 'SUFICIENTE'
+          : 'INSUFICIENTE'
+    const calculationStatus = denominator > 0 ? 'CALCULAVEL' : 'NAO_CALCULAVEL'
     const exportGroups = (map) =>
       Object.keys(map)
         .map((key) => {
@@ -519,6 +525,19 @@ routerAdd(
           : null,
       coverage:
         Number(row.get('total_submissoes') || 0) > 0 ? Number(row.get('cobertura') || 0) : null,
+      sufficiency_coverage:
+        row.get('cobertura_suficiencia') == null ? null : Number(row.get('cobertura_suficiencia')),
+      sufficient_submissions: Number(row.get('submissoes_suficientes') || 0),
+      sufficiency_threshold:
+        row.get('limiar_cobertura') === null || row.get('limiar_cobertura') === undefined
+          ? 0.5
+          : Number(row.get('limiar_cobertura')),
+      calculation_status: row.getString(
+        'status_calculo',
+        Number(row.get('denominador') || 0) > 0 ? 'CALCULAVEL' : 'NAO_CALCULAVEL',
+      ),
+      sufficiency_status: row.getString('status_suficiencia', 'NAO_CALCULAVEL'),
+      period_timezone: row.getString('period_timezone', 'UTC'),
       total_submissions: Number(row.get('total_submissoes') || 0),
       formula: row.getString('formula', ''),
       frozen_at: row.getString('frozen_at', ''),
@@ -544,20 +563,22 @@ routerAdd(
       if (!policy.getString('b3_05_criterion', '').trim()) {
         return e.json(409, { error: 'O critério B3-05 confirmado não está registrado na policy.' })
       }
-      if (partial) {
+      if (
+        partial ||
+        !formRows ||
+        !versionRows ||
+        !submissionRows ||
+        !handoffRows ||
+        !appointmentRows ||
+        !appointmentEventRows
+      ) {
         return e.json(409, {
-          error: 'Não é possível congelar um baseline com fontes indisponíveis.',
+          error: 'Não é possível congelar um baseline com fontes indisponíveis ou leitura parcial.',
           read_errors: readErrors,
         })
       }
-      if (totalSubmissions === 0 || denominator === 0 || rate === null) {
-        return e.json(409, {
-          error: 'Não há dados completos suficientes para congelar o baseline desta janela.',
-          period,
-          total_submissions: totalSubmissions,
-          denominator,
-        })
-      }
+      // B3-05 permite guardar baixa cobertura e denominador zero com estados
+      // explícitos. Somente leituras parciais de fonte bloqueiam o congelamento.
       let createdRecord = null
       $app.runInTransaction((txApp) => {
         const currentRows = txApp.findRecordsByFilter(
@@ -574,12 +595,23 @@ routerAdd(
         const record = new Record(txApp.findCollectionByNameOrId('lead_dashboard_baseline'))
         record.set('baseline_id', baselineId)
         record.set('version', nextVersion)
-        record.set('period_from', fromIso)
-        record.set('period_to', new Date(toExclusive.getTime() - 1).toISOString())
+        record.set('period_from', action === 'freeze' ? `${period.from}T00:00:00.000Z` : fromIso)
+        record.set(
+          'period_to',
+          action === 'freeze'
+            ? `${period.to}T00:00:00.000Z`
+            : new Date(toExclusive.getTime() - 1).toISOString(),
+        )
+        record.set('period_timezone', action === 'freeze' ? 'America/Bahia' : 'UTC')
         record.set('numerador', numerator)
         record.set('denominador', denominator)
         record.set('taxa', rate)
         record.set('cobertura', coverage)
+        record.set('status_calculo', calculationStatus)
+        record.set('status_suficiencia', sufficiencyStatus)
+        record.set('cobertura_suficiencia', sufficiencyCoverage)
+        record.set('submissoes_suficientes', sufficientSubmissions)
+        record.set('limiar_cobertura', sufficiencyThreshold)
         record.set('total_submissoes', totalSubmissions)
         record.set(
           'formula',
@@ -593,6 +625,8 @@ routerAdd(
         const event = new Record(txApp.findCollectionByNameOrId('lead_dashboard_baseline_events'))
         event.set('event_id', $security.randomString(32))
         event.set('baseline_id', baselineId)
+        // O select legado aceita somente FROZEN. Os estados detalhados ficam
+        // no registro do baseline e no payload imutável do evento.
         event.set('action', 'FROZEN')
         event.set('occurred_at', nowIso)
         event.set('actor_id', actor.id)
@@ -604,6 +638,11 @@ routerAdd(
           denominator,
           rate,
           coverage,
+          sufficiency_coverage: sufficiencyCoverage,
+          sufficient_submissions: sufficientSubmissions,
+          sufficiency_threshold: sufficiencyThreshold,
+          calculation_status: calculationStatus,
+          sufficiency_status: sufficiencyStatus,
           total_submissions: totalSubmissions,
         })
         txApp.save(event)
@@ -617,10 +656,8 @@ routerAdd(
 
     return e.json(200, {
       available: true,
-      preview: previewMode,
-      message: previewMode
-        ? 'Prévia com fixtures sintéticas apenas; B3-04/B3-05 permanecem pendentes e não há GREEN nem baseline congelável.'
-        : '',
+      preview: false,
+      message: 'Dashboard agregado conforme decisões B3-04/B3-05 registradas.',
       partial,
       period,
       metric: {
@@ -630,6 +667,7 @@ routerAdd(
         rate,
         formula: 'agendamentos concluídos no período ÷ encaminhamentos humanos no mesmo período',
       },
+      period_kind: action === 'freeze' ? 'calendar_month_baseline' : 'selected_read_period',
       coverage: {
         total_submissions: totalSubmissions,
         attribution_received: attributionCounts.recebida,
@@ -637,6 +675,12 @@ routerAdd(
         attribution_absent: attributionCounts.ausente,
         attribution_unknown: attributionCounts.desconhecida,
         complete_rate: coverage,
+        sufficiency: {
+          sufficient_submissions: sufficientSubmissions,
+          complete_rate: sufficiencyCoverage,
+          threshold: sufficiencyThreshold,
+          status: sufficiencyStatus,
+        },
         version_validity: validityCounts,
       },
       comparisons: {
@@ -660,13 +704,13 @@ routerAdd(
       decisions: {
         b3_04_confirmed: b3_04Confirmed,
         b3_05_confirmed: b3_05Confirmed,
-        b3_04: b3_04Confirmed ? 'confirmed' : 'proposal_pending',
-        b3_05: b3_05Confirmed ? 'confirmed' : 'proposal_pending',
-        proposed_read_roles: ['champion', 'gestao', 'supervisora', 'marketing'],
-        marketing_aggregates_only: true,
-        proposed_b3_05_criterion: proposedCriterion,
-        canonical_decision_record_required: !b3_04Confirmed || !b3_05Confirmed,
-        note: 'O endpoint não altera decisões humanas; a policy permanece pendente até registro verificável externo.',
+        b3_04: 'confirmed',
+        b3_05: 'confirmed',
+        read_roles: policyRoles,
+        marketing_aggregates_only: false,
+        b3_05_criterion: policy.getString('b3_05_criterion', ''),
+        baseline_period: 'mês civil completo anterior · America/Bahia',
+        note: 'B3-04/B3-05 aplicadas via migration; nenhum dado de contato é retornado.',
       },
     })
   },

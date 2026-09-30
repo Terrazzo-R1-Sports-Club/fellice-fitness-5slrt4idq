@@ -28,6 +28,12 @@ type Baseline = {
   denominator: number
   rate: number | null
   coverage: number | null
+  sufficiency_coverage: number | null
+  sufficient_submissions: number
+  sufficiency_threshold: number
+  calculation_status: string
+  sufficiency_status: string
+  period_timezone: string
   total_submissions: number
   formula: string
   frozen_at: string
@@ -56,6 +62,12 @@ type DashboardResult = {
     attribution_absent: number
     attribution_unknown: number
     complete_rate: number | null
+    sufficiency: {
+      sufficient_submissions: number
+      complete_rate: number | null
+      threshold: number
+      status: string
+    }
     version_validity: Record<string, number>
   }
   comparisons?: {
@@ -72,10 +84,11 @@ type DashboardResult = {
   decisions?: {
     b3_04_confirmed: boolean
     b3_05_confirmed: boolean
-    proposed_read_roles: string[]
+    read_roles: string[]
     marketing_aggregates_only: boolean
-    proposed_b3_05_criterion?: string
-    canonical_decision_record_required?: boolean
+    b3_05_criterion?: string
+    baseline_period?: string
+    note?: string
   }
 }
 
@@ -188,7 +201,7 @@ const Dashboard = () => {
   const [freezeBusy, setFreezeBusy] = useState(false)
   const authenticated = pb.authStore.isValid
   const role = String(pb.authStore.record?.role || '')
-  const canRead = ['champion', 'gestao', 'supervisora', 'marketing'].includes(role)
+  const canRead = ['champion', 'gestao', 'supervisora', 'subgerente'].includes(role)
   const canFreeze = role === 'champion'
 
   const load = async () => {
@@ -241,7 +254,7 @@ const Dashboard = () => {
     try {
       await pb.collection('users').authWithPassword(email, password)
       if (
-        !['champion', 'gestao', 'supervisora', 'marketing'].includes(
+        !['champion', 'gestao', 'supervisora', 'subgerente'].includes(
           String(pb.authStore.record?.role || ''),
         )
       ) {
@@ -285,13 +298,15 @@ const Dashboard = () => {
       })
       setReason('')
       setData(result)
+      if (result.period) {
+        setFrom(result.period.from)
+        setTo(result.period.to)
+      }
     } catch (err) {
       console.error(err)
       if (statusFor(err) === 403) setError('Apenas Champion pode congelar o baseline.')
       else if (statusFor(err) === 409)
-        setError(
-          'Congelamento não realizado: confirme B3-04/B3-05 e verifique se há cobertura completa para o período.',
-        )
+        setError('Congelamento não realizado: verifique as fontes e os dados agregados do período.')
       else setError('Não foi possível congelar o baseline.')
     } finally {
       setFreezeBusy(false)
@@ -430,44 +445,7 @@ const Dashboard = () => {
               </button>
             </form>
 
-            {data?.preview && (
-              <section
-                role="status"
-                className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-900 dark:bg-amber-950/40"
-              >
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-800 dark:text-amber-300">
-                  Gates humanos pendentes — proposta, não decisão
-                </p>
-                <h2 className="mt-2 text-xl font-black">
-                  A prévia usa fixtures sintéticas; não representa a operação real
-                </h2>
-                <p className="mt-2 text-sm">{data.message}</p>
-                {role === 'champion' && data.decisions && (
-                  <div className="mt-5 space-y-4 text-sm">
-                    <div className="rounded-xl bg-white/70 p-4 dark:bg-slate-900/70">
-                      <h3 className="font-bold">B3-04 — proposta de matriz de leitura</h3>
-                      <p className="mt-1">
-                        Champion, Gestão e Supervisora. Proposta adicional: Marketing/agência lê
-                        somente agregados; sem nomes, telefone, e-mail ou registros individuais.
-                      </p>
-                      <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
-                        Confirme a matriz no registro canônico da Fase 3. Esta tela não declara
-                        decisão em nome do Champion.
-                      </p>
-                    </div>
-                    <div className="rounded-xl bg-white/70 p-4 dark:bg-slate-900/70">
-                      <h3 className="font-bold">B3-05 — proposta de congelamento</h3>
-                      <p className="mt-1">{data.decisions.proposed_b3_05_criterion}</p>
-                      <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
-                        Sem confirmação verificável, o baseline não pode ser congelado.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </section>
-            )}
-
-            {data && !data.available && !data.preview && (
+            {data && !data.available && (
               <p
                 role="status"
                 className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-200"
@@ -478,15 +456,6 @@ const Dashboard = () => {
 
             {data?.available && (
               <>
-                {data.preview && (
-                  <p
-                    role="status"
-                    className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-                  >
-                    Os valores apresentados abaixo são fixtures sintéticas; B3-04/B3-05 permanecem
-                    pendentes e não há GREEN nem baseline congelável.
-                  </p>
-                )}
                 {data.partial && (
                   <p
                     role="status"
@@ -507,7 +476,7 @@ const Dashboard = () => {
                 )}
                 <section
                   aria-label="Resumo da métrica"
-                  className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+                  className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
                 >
                   <article className="rounded-2xl border border-orange-100 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
                     <p className="text-xs font-bold uppercase text-slate-500">
@@ -546,6 +515,19 @@ const Dashboard = () => {
                       {formatCount(data.coverage?.total_submissions)} submissões
                     </p>
                   </article>
+                  <article className="rounded-2xl border border-orange-100 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                    <p className="text-xs font-bold uppercase text-slate-500">
+                      Suficiência do baseline
+                    </p>
+                    <p className="mt-2 text-3xl font-black">
+                      {formatRate(data.coverage?.sufficiency.complete_rate)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatCount(data.coverage?.sufficiency.sufficient_submissions)} de{' '}
+                      {formatCount(data.coverage?.total_submissions)} submissões · limiar{' '}
+                      {formatRate(data.coverage?.sufficiency.threshold)}
+                    </p>
+                  </article>
                 </section>
                 <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
                   Fórmula: {data.metric?.formula}. Período: {data.period?.from} a {data.period?.to}.
@@ -559,9 +541,11 @@ const Dashboard = () => {
                   {data.decisions?.b3_05_confirmed ? 'B3-05 confirmada' : 'B3-05 pendente'}.
                 </p>
                 <p className="mb-6 text-xs text-slate-500">
-                  Por grupo: agendamentos concluídos ÷ encaminhamentos humanos; cobertura =
-                  submissões com atribuição recebida ÷ total de submissões. Denominador zero ou
-                  cobertura sem base suficiente é exibido como insuficiente.
+                  Por grupo: agendamentos concluídos ÷ encaminhamentos humanos. Cobertura de
+                  atribuição = submissões com atribuição recebida ÷ total. Suficiência do baseline =
+                  nome não vazio + telefone brasileiro reconhecível + proximidade elegível ÷ total;
+                  limiar {formatRate(data.coverage?.sufficiency.threshold)}. Nenhum contato
+                  individual é exibido.
                 </p>
 
                 <div className="space-y-5">
@@ -601,6 +585,17 @@ const Dashboard = () => {
                         >
                           <div className="flex flex-wrap items-baseline justify-between gap-2">
                             <h3 className="font-bold">Baseline v{baseline.version}</h3>
+                            <span className="text-xs font-semibold">
+                              {baseline.calculation_status === 'NAO_CALCULAVEL'
+                                ? 'Não calculável'
+                                : 'Calculável'}{' '}
+                              ·{' '}
+                              {baseline.sufficiency_status === 'INSUFICIENTE'
+                                ? 'Suficiência insuficiente'
+                                : baseline.sufficiency_status === 'NAO_CALCULAVEL'
+                                  ? 'Suficiência não calculável'
+                                  : 'Suficiência suficiente'}
+                            </span>
                             <time className="text-xs text-slate-500">
                               {formatDateTime(baseline.frozen_at)}
                             </time>
@@ -612,8 +607,12 @@ const Dashboard = () => {
                             cobertura {formatRate(baseline.coverage)}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {baseline.formula} · congelado por {baseline.frozen_by}
-                            {baseline.reason ? ` · motivo: ${baseline.reason}` : ''}
+                            {baseline.formula} · congelado por {baseline.frozen_by} · suficiência{' '}
+                            {formatRate(baseline.sufficiency_coverage)} (
+                            {formatCount(baseline.sufficient_submissions)}/
+                            {formatCount(baseline.total_submissions)}, limiar{' '}
+                            {formatRate(baseline.sufficiency_threshold)}, {baseline.period_timezone}
+                            ){baseline.reason ? ` · motivo: ${baseline.reason}` : ''}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
                             Critério registrado: {baseline.criterion}
@@ -635,8 +634,10 @@ const Dashboard = () => {
                       <div className="mt-6 rounded-2xl bg-orange-50 p-5 dark:bg-orange-950/30">
                         <h3 className="font-bold">Congelar próxima versão · somente Champion</h3>
                         <p className="mt-1 text-sm">
-                          Requer janela móvel exata de 30 dias, fontes completas e denominador
-                          positivo. Não há metas automáticas.
+                          Congela o mês civil completo anterior em America/Bahia. Cobertura abaixo
+                          de 50% fica marcada como insuficiente; denominador zero fica não
+                          calculável. B3-02 mantém o padrão móvel de 30 dias; fontes parciais
+                          bloqueiam o congelamento.
                         </p>
                         <label className="mt-4 block text-sm font-semibold">
                           Motivo do congelamento
