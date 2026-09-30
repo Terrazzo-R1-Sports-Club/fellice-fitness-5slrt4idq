@@ -237,6 +237,13 @@ const Dashboard = () => {
       if (!pb.authStore.isValid) return
       try {
         await pb.collection('users').authRefresh()
+        const bootstrapRole = String(pb.authStore.record?.role || '')
+        if (!['champion', 'gestao', 'supervisora', 'subgerente'].includes(bootstrapRole)) {
+          pb.authStore.clear()
+          setData(null)
+          setLoginError('Este papel não está autorizado a consultar o dashboard agregado.')
+          return
+        }
         await load()
       } catch (err) {
         console.error(err)

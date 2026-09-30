@@ -103,7 +103,40 @@ routerAdd(
     } catch (err) {
       return e.internalServerError('A política do dashboard não está disponível.')
     }
-    const policyRoles = policy.get('read_roles') || []
+    // Campos json no JSVM podem voltar como texto bruto ou bytes (Uint8Array);
+    // sem normalização, indexOf(role) nunca encontra e todo papel é negado (403).
+    const rawRoles = policy.get('read_roles')
+    let policyRoles = []
+    if (typeof rawRoles === 'string') {
+      try {
+        const parsed = JSON.parse(rawRoles)
+        if (Array.isArray(parsed)) policyRoles = parsed.map((value) => String(value))
+      } catch (_) {}
+    } else if (Array.isArray(rawRoles)) {
+      policyRoles = rawRoles.map((value) => String(value))
+    } else if (rawRoles && typeof rawRoles.length === 'number' && rawRoles.length > 0) {
+      if (typeof rawRoles[0] === 'string') {
+        for (let i = 0; i < rawRoles.length; i++) policyRoles.push(String(rawRoles[i]))
+      } else {
+        try {
+          let text = ''
+          for (let i = 0; i < rawRoles.length; i++) {
+            text += String.fromCharCode(rawRoles[i] & 0xff)
+          }
+          const parsed = JSON.parse(text)
+          if (Array.isArray(parsed)) policyRoles = parsed.map((value) => String(value))
+        } catch (_) {}
+      }
+    }
+    $app
+      .logger()
+      .info(
+        'dashboard policy roles resolved',
+        'raw_kind',
+        typeof rawRoles,
+        'resolved_count',
+        policyRoles.length,
+      )
     const b3_04Confirmed = policy.get('b3_04_confirmed') === true
     const b3_05Confirmed = policy.get('b3_05_confirmed') === true
     if (!b3_04Confirmed || !policyRoles.length) {
