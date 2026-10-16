@@ -10,6 +10,7 @@ import Agendar from './pages/Agendar'
 import Visao from './pages/Visao'
 import Funil from './pages/Funil'
 import Dashboard from './pages/Dashboard'
+import Saude from './pages/Saude'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/visao" element={<Visao />} />
             <Route path="/funil" element={<Funil />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/saude" element={<Saude />} />
             {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
           </Route>
           <Route path="*" element={<NotFound />} />
