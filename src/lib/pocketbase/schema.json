@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-30T18:00:50.138Z",
+  "generatedAt": "2026-10-16T19:55:28.159Z",
   "collections": [
     {
       "name": "users",
@@ -1748,6 +1748,199 @@
       "indexes": [
         "CREATE UNIQUE INDEX `idx_dashboard_baseline_event` ON `lead_dashboard_baseline_events` (`event_id`)"
       ]
+    },
+    {
+      "name": "lead_sync_settings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"subgerente\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"subgerente\")",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "singleton_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "updated_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "lead_sync_control_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"subgerente\")",
+        "view": "@request.auth.id != \"\" && (@request.auth.role = \"champion\" || @request.auth.role = \"gestao\" || @request.auth.role = \"supervisora\" || @request.auth.role = \"subgerente\")",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "action",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ROLLBACK", "RESTORE"]
+        },
+        {
+          "name": "occurred_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "actor_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "previous_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "lead_integration_health_policy",
+      "type": "base",
+      "apiRules": {
+        "list": null,
+        "view": null,
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "singleton_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "read_roles",
+          "type": "json",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "b4_03_confirmed",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "b4_03_confirmed_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "b4_03_confirmed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
     }
   ]
 }

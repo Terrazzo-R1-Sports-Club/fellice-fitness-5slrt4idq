@@ -1,6 +1,34 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import pb, { type LeadHandoff, type HandoffStatus } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
+
+export type HandoffStatus = 'PENDENTE' | 'ASSUMIDO' | 'ENCERRADO_SEM_AGENDAMENTO'
+
+export interface LeadHandoff {
+  id: string
+  handoff_id: string
+  lead_submission_id: string
+  form_id: string
+  form_version: string
+  created_at: string
+  motivo: string
+  nome: string
+  canal_de_retorno: string
+  objetivo: string
+  proximidade: string
+  ocupacao?: string
+  interesse_em_visita: string
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
+  attribution_status: string
+  status: HandoffStatus
+  dono?: string
+  assumed_at?: string
+  closed_at?: string
+  motivo_encerramento?: string
+  responsavel_anterior?: string
+}
 
 const statuses: HandoffStatus[] = ['PENDENTE', 'ASSUMIDO', 'ENCERRADO_SEM_AGENDAMENTO']
 const formatDate = (value?: string) => (value ? new Date(value).toLocaleString('pt-BR') : '—')
