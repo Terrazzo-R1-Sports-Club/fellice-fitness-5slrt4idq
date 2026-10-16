@@ -77,6 +77,16 @@ routerAdd(
 
     const fromIso = fromDate.toISOString()
     const period = { from: fromParam, to: toParam }
+
+    // Cálculo da janela comparativa anterior (mesma duração imediatamente anterior)
+    const periodDurationMs = toExclusive.getTime() - fromDate.getTime()
+    const prevFromDate = new Date(fromDate.getTime() - periodDurationMs)
+    const prevToExclusive = new Date(fromDate.getTime())
+    const previousPeriod = {
+      from: toDateInput(prevFromDate),
+      to: toDateInput(new Date(prevToExclusive.getTime() - 86400000)),
+    }
+
     const isWithinPeriod = (value) => {
       const raw = String(value || '').replace(' ', 'T')
       const timestamp = Date.parse(raw)
@@ -84,6 +94,16 @@ routerAdd(
         Number.isFinite(timestamp) &&
         timestamp >= fromDate.getTime() &&
         timestamp < toExclusive.getTime()
+      )
+    }
+
+    const isWithinPrevPeriod = (value) => {
+      const raw = String(value || '').replace(' ', 'T')
+      const timestamp = Date.parse(raw)
+      return (
+        Number.isFinite(timestamp) &&
+        timestamp >= prevFromDate.getTime() &&
+        timestamp < prevToExclusive.getTime()
       )
     }
     const readErrors = []
@@ -150,8 +170,10 @@ routerAdd(
     let versionRows = readSource('lead_form_versions', 'form_id,published_at')
     let submissionRows = readSource('lead_submissions', 'started_at')
     let handoffRows = readSource('lead_handoffs', 'created_at')
+    let handoffEventRows = readSource('lead_handoff_events', 'occurred_at')
     let appointmentRows = readSource('lead_appointments', 'created_at')
     let appointmentEventRows = readSource('lead_appointment_events', 'occurred_at')
+    let userRows = readSource('users', 'name')
 
     const formNames = Object.create(null)
     if (formRows) {
@@ -503,6 +525,319 @@ routerAdd(
         })
         .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
 
+    // ==========================================
+    // EXTENSÕES AGREGADAS: SÉRIES, PERÍODO ANTERIOR, RESPOSTAS DO FORM E ATENDENTES
+    // ==========================================
+
+    // 1. Mapeamento de usuários / atendentes para nomes amigáveis (sem contato individual)
+    const attendantNames = Object.create(null)
+    const attendantRoles = Object.create(null)
+    const allAttendants = []
+    if (userRows) {
+      for (const u of userRows) {
+        const uId = u.id
+        const uName = u.getString('name', '').trim()
+        const uRole = u.getString('role', '').trim()
+        const displayName =
+          uName || (uRole ? `Atendente (${uRole})` : `Atendente ${uId.slice(0, 6)}`)
+        attendantNames[uId] = displayName
+        attendantRoles[uId] = uRole
+        if (['consultor', 'gestao', 'supervisora', 'subgerente', 'champion'].indexOf(uRole) >= 0) {
+          allAttendants.push({ id: uId, name: displayName, role: uRole })
+        }
+      }
+    }
+    const resolveAttendantName = (userId) => {
+      if (!userId) return 'Não atribuído'
+      return attendantNames[userId] || `Atendente ${userId.slice(0, 6)}`
+    }
+
+    // 2. Cálculo do Período Anterior para métricas comparativas
+    let prevTotalSubmissions = 0
+    let prevAttributedSubmissions = 0
+    const prevHandoffKeys = Object.create(null)
+    const prevCompletedAppointments = Object.create(null)
+
+    if (submissionRows) {
+      for (const row of submissionRows) {
+        const startedAt = row.getString('started_at', '').trim()
+        if (isWithinPrevPeriod(startedAt)) {
+          prevTotalSubmissions++
+          if (row.getString('attribution_status', '').trim() === 'recebida') {
+            prevAttributedSubmissions++
+          }
+        }
+      }
+    }
+    if (handoffRows) {
+      for (const row of handoffRows) {
+        const createdAt = row.getString('created_at', '')
+        if (isWithinPrevPeriod(createdAt)) {
+          const submissionId = row.getString('lead_submission_id', '').trim()
+          const id = row.getString('handoff_id', '').trim() || row.id
+          const key = submissionId ? `submission:${submissionId}` : `handoff:${id}`
+          prevHandoffKeys[key] = true
+        }
+      }
+    }
+    if (appointmentRows) {
+      for (const row of appointmentRows) {
+        const appointmentId = row.getString('appointment_id', '').trim() || row.id
+        const submissionId = row.getString('lead_submission_id', '').trim()
+        if (
+          row.getString('status', '') === 'ENCAMINHAMENTO_HUMANO' &&
+          isWithinPrevPeriod(row.getString('created_at', ''))
+        ) {
+          const key = submissionId ? `submission:${submissionId}` : `appointment:${appointmentId}`
+          prevHandoffKeys[key] = true
+        }
+        if (
+          row.getString('status', '') === 'CONCLUIDO' &&
+          isWithinPrevPeriod(row.getString('concluded_at', ''))
+        ) {
+          prevCompletedAppointments[appointmentId] = true
+        }
+      }
+    }
+    if (appointmentEventRows) {
+      for (const row of appointmentEventRows) {
+        if (!isWithinPrevPeriod(row.getString('occurred_at', ''))) continue
+        const type = row.getString('event_type', '')
+        const appointmentId = row.getString('appointment_id', '').trim() || row.id
+        const submissionId = row.getString('lead_submission_id', '').trim()
+        if (type === 'APPOINTMENT_HANDOFF') {
+          const key = submissionId ? `submission:${submissionId}` : `appointment:${appointmentId}`
+          prevHandoffKeys[key] = true
+        }
+        if (type === 'APPOINTMENT_CONCLUDED') {
+          prevCompletedAppointments[appointmentId] = true
+        }
+      }
+    }
+
+    const prevNumerator = Object.keys(prevCompletedAppointments).length
+    const prevDenominator = Object.keys(prevHandoffKeys).length
+    const prevRate = !partial && prevDenominator > 0 ? prevNumerator / prevDenominator : null
+    const prevCoverage =
+      prevTotalSubmissions > 0 ? prevAttributedSubmissions / prevTotalSubmissions : null
+
+    const calcChange = (current, previous) => {
+      if (previous === null || previous === undefined || previous === 0) {
+        return current > 0 ? 100 : 0
+      }
+      return Math.round(((current - previous) / previous) * 1000) / 10
+    }
+
+    const comparisonsSummary = {
+      period: period,
+      previous_period: previousPeriod,
+      total_submissions: {
+        current: totalSubmissions,
+        previous: prevTotalSubmissions,
+        change_pct: calcChange(totalSubmissions, prevTotalSubmissions),
+      },
+      completed_appointments: {
+        current: numerator,
+        previous: prevNumerator,
+        change_pct: calcChange(numerator, prevNumerator),
+      },
+      human_handoffs: {
+        current: denominator,
+        previous: prevDenominator,
+        change_pct: calcChange(denominator, prevDenominator),
+      },
+      rate: {
+        current: rate,
+        previous: prevRate,
+        change_points:
+          rate !== null && prevRate !== null ? Math.round((rate - prevRate) * 1000) / 10 : null,
+      },
+      coverage: {
+        current: coverage,
+        previous: prevCoverage,
+        change_points:
+          coverage !== null && prevCoverage !== null
+            ? Math.round((coverage - prevCoverage) * 1000) / 10
+            : null,
+      },
+    }
+
+    // 3. Distribuição das respostas do formulário (objetivo, proximidade, ocupacao, interesse)
+    const formDistributions = {
+      objetivo: Object.create(null),
+      proximidade: Object.create(null),
+      ocupacao: Object.create(null),
+      interesse_em_visita: Object.create(null),
+    }
+
+    // 4. Séries temporais (por dia) para gráfico de evolução
+    const timelineByDay = Object.create(null)
+    // Inicializar os dias do período
+    const curDateIter = new Date(fromDate.getTime())
+    while (curDateIter.getTime() < toExclusive.getTime()) {
+      const dayKey = curDateIter.toISOString().slice(0, 10)
+      timelineByDay[dayKey] = {
+        date: dayKey,
+        submissions: 0,
+        handoffs: 0,
+        appointments: 0,
+      }
+      curDateIter.setUTCDate(curDateIter.getUTCDate() + 1)
+    }
+
+    if (submissionRows) {
+      for (const row of submissionRows) {
+        const startedAt = row.getString('started_at', '').trim()
+        if (!isWithinPeriod(startedAt)) continue
+
+        const dayKey = startedAt.slice(0, 10)
+        if (timelineByDay[dayKey]) {
+          timelineByDay[dayKey].submissions++
+        }
+
+        const obj = row.getString('objetivo', '').trim() || 'Não informado'
+        formDistributions.objetivo[obj] = (formDistributions.objetivo[obj] || 0) + 1
+
+        const prox = row.getString('proximidade', '').trim() || 'Não informado'
+        formDistributions.proximidade[prox] = (formDistributions.proximidade[prox] || 0) + 1
+
+        const ocu = row.getString('ocupacao', '').trim() || 'Não informado'
+        formDistributions.ocupacao[ocu] = (formDistributions.ocupacao[ocu] || 0) + 1
+
+        const inter = row.getString('interesse_em_visita', '').trim() || 'Não informado'
+        formDistributions.interesse_em_visita[inter] =
+          (formDistributions.interesse_em_visita[inter] || 0) + 1
+      }
+    }
+
+    // Alimentar handoffs na série temporal
+    if (handoffRows) {
+      for (const row of handoffRows) {
+        const createdAt = row.getString('created_at', '')
+        if (isWithinPeriod(createdAt)) {
+          const dayKey = createdAt.slice(0, 10)
+          if (timelineByDay[dayKey]) timelineByDay[dayKey].handoffs++
+        }
+      }
+    }
+
+    // Alimentar agendamentos concluídos na série temporal
+    if (appointmentRows) {
+      for (const row of appointmentRows) {
+        if (row.getString('status', '') === 'CONCLUIDO') {
+          const concludedAt = row.getString('concluded_at', '')
+          if (isWithinPeriod(concludedAt)) {
+            const dayKey = concludedAt.slice(0, 10)
+            if (timelineByDay[dayKey]) timelineByDay[dayKey].appointments++
+          }
+        }
+      }
+    }
+
+    const timeline = Object.keys(timelineByDay)
+      .sort()
+      .map((k) => timelineByDay[k])
+
+    const formatDistribution = (map) =>
+      Object.keys(map)
+        .map((name) => ({ name, count: map[name] }))
+        .sort((a, b) => b.count - a.count)
+
+    // 5. Agregação e Kanbans por Atendente
+    // Cada atendente terá colunas de seu pipeline e volumetria:
+    // Colunas:
+    // - "recebidos": leads que entraram na fila ou foram encaminhados
+    // - "em_contato": leads assumidos / em atendimento
+    // - "agendados": leads com agendamento concluído
+    // - "encerrados": leads encerrados sem agendamento
+    const attendantsMap = Object.create(null)
+    const ensureAttendant = (attendantId) => {
+      const safeId = attendantId || 'unassigned'
+      if (!attendantsMap[safeId]) {
+        attendantsMap[safeId] = {
+          attendant_id: safeId,
+          name: resolveAttendantName(attendantId),
+          role: attendantRoles[attendantId] || (attendantId ? 'consultor' : 'sem_dono'),
+          total_received: 0,
+          in_progress: 0,
+          appointments_concluded: 0,
+          closed_without_appointment: 0,
+          pending: 0,
+          conversion_rate: null,
+          kanban: {
+            recebidos: 0,
+            em_contato: 0,
+            agendados: 0,
+            encerrados: 0,
+          },
+        }
+      }
+      return attendantsMap[safeId]
+    }
+
+    // Inicializar atendentes cadastrados para aparecerem no quadro comparativo
+    for (const att of allAttendants) {
+      ensureAttendant(att.id)
+    }
+
+    // Processar lead_handoffs agregados por dono no período
+    if (handoffRows) {
+      for (const row of handoffRows) {
+        const createdAt = row.getString('created_at', '')
+        if (!isWithinPeriod(createdAt)) continue
+        const dono = row.getString('dono', '').trim()
+        const status = row.getString('status', '')
+        const att = ensureAttendant(dono)
+        att.total_received++
+
+        if (status === 'PENDENTE') {
+          att.pending++
+          att.kanban.recebidos++
+        } else if (status === 'ASSUMIDO') {
+          att.in_progress++
+          att.kanban.em_contato++
+        } else if (status === 'ENCERRADO_SEM_AGENDAMENTO') {
+          att.closed_without_appointment++
+          att.kanban.encerrados++
+        }
+      }
+    }
+
+    // Processar lead_appointments por dono no período
+    if (appointmentRows) {
+      for (const row of appointmentRows) {
+        const createdAt = row.getString('created_at', '')
+        if (!isWithinPeriod(createdAt)) continue
+        const dono = row.getString('dono', '').trim()
+        const status = row.getString('status', '')
+        const att = ensureAttendant(dono)
+
+        if (status === 'CONCLUIDO') {
+          att.appointments_concluded++
+          att.kanban.agendados++
+        } else if (status === 'ENCAMINHAMENTO_HUMANO') {
+          if (!att.total_received) att.total_received++
+          if (dono) att.kanban.em_contato++
+          else att.kanban.recebidos++
+        }
+      }
+    }
+
+    // Calcular conversão por atendente
+    const attendantsList = Object.keys(attendantsMap).map((k) => {
+      const att = attendantsMap[k]
+      const totalOperated =
+        att.appointments_concluded + att.closed_without_appointment + att.in_progress
+      att.conversion_rate = totalOperated > 0 ? att.appointments_concluded / totalOperated : null
+      return att
+    })
+    // Ordenar: primeiro atendentes nomeados por total atendido, depois não atribuídos
+    attendantsList.sort((a, b) => {
+      if (a.attendant_id === 'unassigned') return 1
+      if (b.attendant_id === 'unassigned') return -1
+      return b.total_received - a.total_received
+    })
+
     let baselineRows = null
     let baselineAvailable = true
     try {
@@ -689,6 +1024,15 @@ routerAdd(
         by_medium: exportGroups(groups.by_medium),
         by_campaign: exportGroups(groups.by_campaign),
       },
+      comparisons_summary: comparisonsSummary,
+      timeline,
+      distributions: {
+        objetivo: formatDistribution(formDistributions.objetivo),
+        proximidade: formatDistribution(formDistributions.proximidade),
+        ocupacao: formatDistribution(formDistributions.ocupacao),
+        interesse_em_visita: formatDistribution(formDistributions.interesse_em_visita),
+      },
+      attendants: attendantsList,
       baselines,
       baseline_available: baselineAvailable,
       baseline_created: baselineCreated,
@@ -697,8 +1041,10 @@ routerAdd(
         lead_form_versions: versionRows ? 'ok' : 'error',
         lead_submissions: submissionRows ? 'ok' : 'error',
         lead_handoffs: handoffRows ? 'ok' : 'error',
+        lead_handoff_events: handoffEventRows ? 'ok' : 'error',
         lead_appointments: appointmentRows ? 'ok' : 'error',
         lead_appointment_events: appointmentEventRows ? 'ok' : 'error',
+        users: userRows ? 'ok' : 'error',
       },
       read_errors: readErrors,
       decisions: {
