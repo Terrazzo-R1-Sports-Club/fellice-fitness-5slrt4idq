@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowRight,
@@ -498,6 +498,24 @@ export function Index() {
   )
   const linkWhatsApp = `https://wa.me/${WHATSAPP_ATENDIMENTO}?text=${mensagemWhatsApp}`
 
+  // REF-02 / SPEC-4-004 — levar as respostas já preenchidas até o agendamento.
+  // O transporte é o estado de navegação do roteador (mesma sessão de atendimento,
+  // sem dados na URL e sem armazenamento local). O identificador da submissão é
+  // preservado para não criar lead/agendamento duplicado (contrato B3-03).
+  const navigate = useNavigate()
+  const irParaGrade = () => {
+    navigate('/agendar', {
+      state: {
+        lead_submission_id: leadSubmissionId.current,
+        nome: formData.nome.trim(),
+        telefone: formData.telefone.trim(),
+        email: formData.email.trim(),
+        proximidade: formData.proximidade,
+        ocupacao: formData.ocupacao,
+      },
+    })
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-200">
       <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur transition-colors duration-200">
@@ -585,7 +603,15 @@ export function Index() {
                   size="lg"
                   className="min-h-12 border-primary/30 font-semibold"
                 >
-                  <Link to="/agendar">Ver grade de horários</Link>
+                  <Link
+                    to="/agendar"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      irParaGrade()
+                    }}
+                  >
+                    Ver grade de horários
+                  </Link>
                 </Button>
               </div>
             </div>

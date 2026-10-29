@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 // F2-IMP-003 / SPEC-2-001 — seleção e conclusão do agendamento.
 // Fluxo do lead: escolher slot ABERTO (RN-2.01) → preencher campos mínimos (F2-T003) →
@@ -35,6 +35,20 @@ const formatDay = (iso: string) => {
 }
 
 const formatTime = (iso: string) => iso.slice(11, 16)
+
+// REF-02 / SPEC-4-004 — reaproveitar as respostas da triagem no mesmo atendimento.
+// O transporte usa o estado de navegação do roteador (mesma sessão, sem dados na
+// URL e sem armazenamento local). Acesso direto a /agendar sem triagem mantém o
+// comportamento anterior (formulário vazio e novo identificador). Falha de leitura
+// mantém o formulário vazio, sem indicar sucesso falso.
+type TriageContext = {
+  lead_submission_id: string
+  nome: string
+  telefone: string
+  email: string
+  proximidade: string
+  ocupacao: string
+}
 
 async function createRecord(collection: string, data: Record<string, unknown>) {
   if (!BACKEND_URL) throw new Error('Backend do Skip não configurado')
@@ -81,8 +95,38 @@ const Agendar = () => {
     profissao: '',
     email: '',
   })
-  const leadSubmissionId = useRef(crypto.randomUUID())
+  const location = useLocation()
+  // REF-02: contexto da triagem chega pelo estado do roteador; sem triagem, permanece vazio.
+  const triage = (location.state ?? null) as TriageContext | null
+  const triageValida =
+    !!triage &&
+    typeof triage.lead_submission_id === 'string' &&
+    triage.lead_submission_id.length > 0 &&
+    typeof triage.nome === 'string' &&
+    typeof triage.telefone === 'string' &&
+    typeof triage.email === 'string' &&
+    typeof triage.proximidade === 'string' &&
+    typeof triage.ocupacao === 'string'
+  const leadSubmissionId = useRef(
+    triageValida && triage ? triage.lead_submission_id : crypto.randomUUID(),
+  )
   const [occupancy, setOccupancy] = useState<Record<string, number>>({})
+
+  // REF-02: pré-preencher uma única vez com as respostas da triagem do mesmo atendimento.
+  // O lead pode corrigir qualquer campo antes de confirmar.
+  useEffect(() => {
+    if (!triageValida || !triage) return
+    setForm((atual) => ({
+      ...atual,
+      nome: triage.nome.trim(),
+      telefone_ou_canal_de_retorno: triage.telefone.trim(),
+      email: triage.email.trim(),
+      profissao: triage.ocupacao,
+      localidade:
+        triage.proximidade === 'Trabalho na região do Itaigara' ? 'comercial' : 'residencial',
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadSlots = async () => {
     if (!BACKEND_URL) {
