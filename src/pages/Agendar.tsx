@@ -48,6 +48,7 @@ type TriageContext = {
   email: string
   proximidade: string
   ocupacao: string
+  profissao?: string
 }
 
 async function createRecord(collection: string, data: Record<string, unknown>) {
@@ -121,7 +122,7 @@ const Agendar = () => {
       nome: triage.nome.trim(),
       telefone_ou_canal_de_retorno: triage.telefone.trim(),
       email: triage.email.trim(),
-      profissao: triage.ocupacao,
+      profissao: triage.profissao || triage.ocupacao,
       localidade:
         triage.proximidade === 'Trabalho na região do Itaigara' ? 'comercial' : 'residencial',
     }))

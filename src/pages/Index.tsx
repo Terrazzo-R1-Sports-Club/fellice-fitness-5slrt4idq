@@ -23,7 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 const FORM_ID = 'fellice-captura-01'
-const FORM_VERSION = 'v1.0.0'
+const FORM_VERSION = 'v1.1.0'
 const BACKEND_URL = import.meta.env.VITE_POCKETBASE_URL
 const WHATSAPP_ATENDIMENTO = '5571993960018'
 
@@ -105,30 +105,53 @@ const PROXIMIDADES = [
   },
 ]
 
+// REF-03 — lista aprovada pela cliente em 29/10/2026. O id é o valor interno
+// gravado em lead_submissions.ocupacao (campo select); rótulos não mudam
+// valores internos nem semântica histórica (regra 5 da SPEC).
 const OCUPACOES = [
   { id: 'CLT', title: 'Profissional CLT', desc: 'Horário comercial e rotina corporativa' },
   {
-    id: 'Autônomo/Empresário',
-    title: 'Autônomo ou Empresário',
-    desc: 'Gestão de negócio e agenda dinâmica',
+    id: 'Autônomo',
+    title: 'Autônomo',
+    desc: 'Trabalho por conta própria com agenda própria',
   },
   {
-    id: 'Executivo/Gestor',
-    title: 'Executivo ou Gestor',
+    id: 'Empresário',
+    title: 'Empresário',
+    desc: 'Gestão do próprio negócio e equipe',
+  },
+  {
+    id: 'Diretor ou alta gerência',
+    title: 'Diretor ou alta gerência',
     desc: 'Liderança e rotina de alta demanda',
   },
   { id: 'Estudante', title: 'Estudante', desc: 'Graduação, pós-graduação ou concursos' },
   { id: 'Aposentado', title: 'Aposentado', desc: 'Foco em saúde, lazer e longevidade' },
   {
-    id: 'Profissional da saúde, educação ou outra área com horário irregular',
-    title: 'Área da Saúde / Educação / Plantonista',
-    desc: 'Turnos variados, plantões ou horários flexíveis',
-  },
-  {
     id: 'Prefiro não informar',
     title: 'Prefiro não informar',
     desc: 'Sem restrições de categoria',
   },
+]
+
+// REF-03 — pergunta secundária de profissão, aprovada pela cliente em 29/10/2026.
+// Obrigatória para CLT e Autônomo; "Outros" coleta texto livre (aprovado).
+const PROFISSOES_CLT = [
+  'Assistente administrativo',
+  'Vendedor',
+  'Técnico de enfermagem',
+  'Médico',
+  'Engenheiro',
+  'Outros',
+]
+
+const PROFISSOES_AUTONOMO = [
+  'Cabeleireiro',
+  'Eletricista',
+  'Advogado',
+  'Dentista',
+  'Médico',
+  'Outros',
 ]
 
 const INTERESSES = [
@@ -217,6 +240,8 @@ export interface LeadFormData {
   objetivo: string
   proximidade: string
   ocupacao: string
+  profissao: string
+  profissao_outros: string
   interesse_em_visita: string
   precisa_de_ajuda_humana: boolean
   consentimento: boolean
@@ -229,10 +254,16 @@ const initialFormData: LeadFormData = {
   objetivo: '',
   proximidade: '',
   ocupacao: '',
+  profissao: '',
+  profissao_outros: '',
   interesse_em_visita: '',
   precisa_de_ajuda_humana: false,
   consentimento: false,
 }
+
+// REF-03 — a profissão só é perguntada para CLT e Autônomo (obrigatória).
+const profissaoAplicavel = (ocupacao: string): boolean =>
+  ocupacao === 'CLT' || ocupacao === 'Autônomo'
 
 function formatBrazilianPhone(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11)
@@ -352,6 +383,15 @@ export function Index() {
       case 6: {
         if (!formData.ocupacao) {
           novosErros.ocupacao = 'Selecione a opção que melhor descreve sua rotina.'
+          break
+        }
+        // REF-03 — pergunta secundária obrigatória para CLT e Autônomo.
+        if (profissaoAplicavel(formData.ocupacao)) {
+          if (!formData.profissao) {
+            novosErros.profissao = 'Selecione sua profissão para continuar.'
+          } else if (formData.profissao === 'Outros' && !formData.profissao_outros.trim()) {
+            novosErros.profissao_outros = 'Descreva sua profissão para continuar.'
+          }
         }
         break
       }
@@ -414,6 +454,13 @@ export function Index() {
 
     const canalDeRetorno = `${formData.telefone.trim()} | ${formData.email.trim()}`
 
+    // REF-03 — profissão da pergunta secundária; "Outros" grava o texto livre
+    // informado pelo lead (campo texto, não select).
+    const profissaoFinal =
+      formData.profissao === 'Outros'
+        ? `Outros: ${formData.profissao_outros.trim()}`
+        : formData.profissao
+
     try {
       await createRecord('lead_submissions', {
         lead_submission_id: leadSubmissionId.current,
@@ -426,6 +473,7 @@ export function Index() {
         objetivo: formData.objetivo,
         proximidade: formData.proximidade,
         ocupacao: formData.ocupacao,
+        profissao: profissaoFinal,
         interesse_em_visita: formData.interesse_em_visita,
         precisa_de_ajuda_humana: formData.precisa_de_ajuda_humana,
         consentimento: formData.consentimento,
@@ -447,6 +495,7 @@ export function Index() {
           form_version: FORM_VERSION,
           telefone: formData.telefone.trim(),
           email: formData.email.trim(),
+          profissao: profissaoFinal,
         },
       })
 
@@ -464,6 +513,7 @@ export function Index() {
           objetivo: formData.objetivo,
           proximidade: formData.proximidade,
           ocupacao: formData.ocupacao,
+          profissao: profissaoFinal,
           interesse_em_visita: formData.interesse_em_visita,
           utm_source: utmSource,
           utm_medium: utmMedium,
@@ -512,6 +562,10 @@ export function Index() {
         email: formData.email.trim(),
         proximidade: formData.proximidade,
         ocupacao: formData.ocupacao,
+        profissao:
+          formData.profissao === 'Outros'
+            ? `Outros: ${formData.profissao_outros.trim()}`
+            : formData.profissao,
       },
     })
   }
@@ -923,8 +977,18 @@ export function Index() {
                             key={item.id}
                             type="button"
                             onClick={() => {
-                              setFormData({ ...formData, ocupacao: item.id })
+                              // REF-03 — trocar a rotina limpa a resposta secundária
+                              // incompatível (profissão e texto de Outros).
+                              setFormData({
+                                ...formData,
+                                ocupacao: item.id,
+                                profissao: '',
+                                profissao_outros: '',
+                              })
                               if (erros.ocupacao) setErros({ ...erros, ocupacao: '' })
+                              if (erros.profissao) setErros({ ...erros, profissao: '' })
+                              if (erros.profissao_outros)
+                                setErros({ ...erros, profissao_outros: '' })
                             }}
                             className={`flex flex-col justify-between rounded-2xl border p-4 text-left transition-all ${
                               selected
@@ -940,6 +1004,63 @@ export function Index() {
                     </div>
                     {erros.ocupacao && (
                       <p className="text-sm font-medium text-destructive">{erros.ocupacao}</p>
+                    )}
+                    {profissaoAplicavel(formData.ocupacao) && (
+                      <div className="mt-4 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Qual é a sua profissão? <span className="text-primary">*</span>
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {(formData.ocupacao === 'CLT' ? PROFISSOES_CLT : PROFISSOES_AUTONOMO).map(
+                            (prof) => {
+                              const selected = formData.profissao === prof
+                              return (
+                                <button
+                                  key={prof}
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      profissao: prof,
+                                      profissao_outros: '',
+                                    })
+                                    if (erros.profissao) setErros({ ...erros, profissao: '' })
+                                    if (erros.profissao_outros)
+                                      setErros({ ...erros, profissao_outros: '' })
+                                  }}
+                                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition-all ${
+                                    selected
+                                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                                      : 'border-border bg-card text-foreground hover:border-primary/40 hover:bg-secondary/40'
+                                  }`}
+                                >
+                                  {prof}
+                                </button>
+                              )
+                            },
+                          )}
+                        </div>
+                        {formData.profissao === 'Outros' && (
+                          <Input
+                            value={formData.profissao_outros}
+                            onChange={(e) => {
+                              setFormData({ ...formData, profissao_outros: e.target.value })
+                              if (erros.profissao_outros)
+                                setErros({ ...erros, profissao_outros: '' })
+                            }}
+                            placeholder="Escreva qual é a sua profissão"
+                            aria-label="Descreva sua profissão"
+                          />
+                        )}
+                        {erros.profissao && (
+                          <p className="text-sm font-medium text-destructive">{erros.profissao}</p>
+                        )}
+                        {erros.profissao_outros && (
+                          <p className="text-sm font-medium text-destructive">
+                            {erros.profissao_outros}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
