@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-06T17:01:47.571Z",
+  "generatedAt": "2026-11-06T17:02:27.366Z",
   "collections": [
     {
       "name": "users",
@@ -655,6 +655,36 @@
             "onCreate",
             "onUpdate"
           ]
+        },
+        {
+          "name": "prioridade_nota",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prioridade_faixa",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "alta",
+            "media",
+            "baixa",
+            "sem_pontuacao"
+          ]
+        },
+        {
+          "name": "prioridade_matriz",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prioridade_motivo",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
