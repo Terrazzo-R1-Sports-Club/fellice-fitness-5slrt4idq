@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { calcularPrioridade } from '@/lib/prioridade'
 
 // F2-IMP-003 / SPEC-2-001 — seleção e conclusão do agendamento.
 // Fluxo do lead: escolher slot ABERTO (RN-2.01) → preencher campos mínimos (F2-T003) →
@@ -49,6 +50,12 @@ type TriageContext = {
   proximidade: string
   ocupacao: string
   profissao?: string
+  prioridade?: {
+    nota: number
+    faixa: 'alta' | 'media' | 'baixa' | 'sem_pontuacao'
+    matriz: string
+    motivo: string
+  }
 }
 
 async function createRecord(collection: string, data: Record<string, unknown>) {
@@ -187,6 +194,10 @@ const Agendar = () => {
 
   const handoffToHuman = async (reason: string) => {
     const now = new Date().toISOString()
+    // REF-05 — prioridade da triagem (ou calculada aqui, se acesso direto) vai
+    // para o agendamento; a Visão exibe a mesma faixa da Fila.
+    const prioridadeAgendamento =
+      triage?.prioridade ?? calcularPrioridade(triage?.ocupacao, triage?.profissao)
     const appointment = await createRecord('lead_appointments', {
       appointment_id: crypto.randomUUID(),
       lead_submission_id: leadSubmissionId.current,
@@ -199,6 +210,7 @@ const Agendar = () => {
       conflict_detected: false,
       handoff_reason: reason,
       created_at: now,
+      ...prioridadeAgendamento,
     })
     await createRecord('lead_appointment_events', {
       event_id: crypto.randomUUID(),
@@ -230,6 +242,10 @@ const Agendar = () => {
     setError('')
     const now = new Date().toISOString()
     try {
+      // REF-05 — prioridade da triagem (ou calculada aqui, se acesso direto) vai
+      // para o agendamento; a Visão exibe a mesma faixa da Fila.
+      const prioridadeAgendamento =
+        triage?.prioridade ?? calcularPrioridade(triage?.ocupacao, triage?.profissao)
       let appointmentRecord: Record<string, unknown>
       if (existingAppointment && existingAppointment.slot_id !== selected.slot_id) {
         // RN-2.06: reescolha de slot atualiza a mesma tentativa (não duplica)
@@ -245,6 +261,7 @@ const Agendar = () => {
           status: 'CONCLUIDO',
           conflict_detected: false,
           concluded_at: now,
+          ...prioridadeAgendamento,
         })
         await createRecord('lead_appointment_events', {
           event_id: crypto.randomUUID(),
@@ -273,6 +290,7 @@ const Agendar = () => {
           conflict_detected: false,
           created_at: now,
           concluded_at: now,
+          ...prioridadeAgendamento,
         })
         await createRecord('lead_appointment_events', {
           event_id: crypto.randomUUID(),

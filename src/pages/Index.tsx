@@ -18,12 +18,13 @@ import {
   Zap,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { calcularPrioridade } from '@/lib/prioridade'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 const FORM_ID = 'fellice-captura-01'
-const FORM_VERSION = 'v1.1.1'
+const FORM_VERSION = 'v1.2.0'
 const BACKEND_URL = import.meta.env.VITE_POCKETBASE_URL
 const WHATSAPP_ATENDIMENTO = '5571993960018'
 
@@ -461,6 +462,10 @@ export function Index() {
         ? `Outros: ${formData.profissao_outros.trim()}`
         : formData.profissao
 
+    // REF-05 — pontuação determinística (matriz v1) calculada na conclusão da
+    // triagem e gravada junto da submissão; valor e motivo rastreáveis.
+    const prioridade = calcularPrioridade(formData.ocupacao, profissaoFinal)
+
     try {
       await createRecord('lead_submissions', {
         lead_submission_id: leadSubmissionId.current,
@@ -474,6 +479,7 @@ export function Index() {
         proximidade: formData.proximidade,
         ocupacao: formData.ocupacao,
         profissao: profissaoFinal,
+        ...prioridade,
         interesse_em_visita: formData.interesse_em_visita,
         precisa_de_ajuda_humana: formData.precisa_de_ajuda_humana,
         consentimento: formData.consentimento,
@@ -496,6 +502,10 @@ export function Index() {
           telefone: formData.telefone.trim(),
           email: formData.email.trim(),
           profissao: profissaoFinal,
+          prioridade_nota: prioridade.nota,
+          prioridade_faixa: prioridade.faixa,
+          prioridade_matriz: prioridade.matriz,
+          prioridade_motivo: prioridade.motivo,
         },
       })
 
@@ -514,6 +524,10 @@ export function Index() {
           proximidade: formData.proximidade,
           ocupacao: formData.ocupacao,
           profissao: profissaoFinal,
+          prioridade_nota: prioridade.nota,
+          prioridade_faixa: prioridade.faixa,
+          prioridade_matriz: prioridade.matriz,
+          prioridade_motivo: prioridade.motivo,
           interesse_em_visita: formData.interesse_em_visita,
           utm_source: utmSource,
           utm_medium: utmMedium,
@@ -566,6 +580,12 @@ export function Index() {
           formData.profissao === 'Outros'
             ? `Outros: ${formData.profissao_outros.trim()}`
             : formData.profissao,
+        prioridade: calcularPrioridade(
+          formData.ocupacao,
+          formData.profissao === 'Outros'
+            ? `Outros: ${formData.profissao_outros.trim()}`
+            : formData.profissao,
+        ),
       },
     })
   }

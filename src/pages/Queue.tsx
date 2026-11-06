@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
+import { rotuloPrioridade } from '@/lib/prioridade'
 
 export type HandoffStatus = 'PENDENTE' | 'ASSUMIDO' | 'ENCERRADO_SEM_AGENDAMENTO'
 
@@ -22,6 +23,10 @@ export interface LeadHandoff {
   utm_medium?: string
   utm_campaign?: string
   attribution_status: string
+  prioridade_nota?: number
+  prioridade_faixa?: 'alta' | 'media' | 'baixa' | 'sem_pontuacao'
+  prioridade_matriz?: string
+  prioridade_motivo?: string
   status: HandoffStatus
   dono?: string
   assumed_at?: string
@@ -50,7 +55,16 @@ const Queue = () => {
       const result = await pb
         .collection<LeadHandoff>('lead_handoffs')
         .getFullList({ sort: '-created_at' })
-      setHandoffs(result)
+      // REF-05 — Fila reordena por prioridade: nota desc; empate = mais antigo
+      // primeiro (insumo 3/3 aprovado em 06/11/2026).
+      const ordem: Record<string, number> = { alta: 3, media: 2, baixa: 1, sem_pontuacao: 0 }
+      const ordenados = [...result].sort((a, b) => {
+        const oa = ordem[a.prioridade_faixa ?? 'sem_pontuacao'] ?? 0
+        const ob = ordem[b.prioridade_faixa ?? 'sem_pontuacao'] ?? 0
+        if (oa !== ob) return ob - oa
+        return a.created_at.localeCompare(b.created_at)
+      })
+      setHandoffs(ordenados)
     } catch (err) {
       console.error(err)
       setError('Não foi possível carregar a fila. Confirme que seu usuário tem o papel autorizado.')
@@ -238,6 +252,17 @@ const Queue = () => {
                       </div>
                       <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700 dark:bg-orange-950/60 dark:text-orange-300">
                         {handoff.status}
+                      </span>
+                      <span
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        title={handoff.prioridade_motivo || 'sem resposta de rotina'}
+                      >
+                        {rotuloPrioridade({
+                          nota: handoff.prioridade_nota ?? 0,
+                          faixa: handoff.prioridade_faixa ?? 'sem_pontuacao',
+                          matriz: '',
+                          motivo: '',
+                        })}
                       </span>
                     </div>
                     <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">

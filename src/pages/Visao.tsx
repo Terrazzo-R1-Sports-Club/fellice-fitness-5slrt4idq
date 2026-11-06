@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
+import { rotuloPrioridade } from '@/lib/prioridade'
 
 // F2-IMP-008 / SPEC-2-002 — visão operacional com fila, escalada e rollback.
 // Estado continua ENCAMINHAMENTO_HUMANO ao escalar/encerrar; a transição para
@@ -42,6 +43,10 @@ type Appointment = {
   utm_medium?: string
   utm_campaign?: string
   attribution_status?: string
+  prioridade_nota?: number
+  prioridade_faixa?: 'alta' | 'media' | 'baixa' | 'sem_pontuacao'
+  prioridade_matriz?: string
+  prioridade_motivo?: string
 }
 
 const STATUSES = ['TENTATIVA', 'CONCLUIDO', 'DESISTENCIA', 'ENCAMINHAMENTO_HUMANO'] as const
@@ -447,6 +452,17 @@ const Visao = () => {
                         className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLE[appt.status] || ''}`}
                       >
                         {appt.status}
+                      </span>
+                      <span
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        title={appt.prioridade_motivo || 'sem resposta de rotina'}
+                      >
+                        {rotuloPrioridade({
+                          nota: appt.prioridade_nota ?? 0,
+                          faixa: appt.prioridade_faixa ?? 'sem_pontuacao',
+                          matriz: '',
+                          motivo: '',
+                        })}
                       </span>
                     </div>
                     <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
