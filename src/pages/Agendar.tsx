@@ -352,7 +352,8 @@ const Agendar = () => {
               Fellice Fitness
             </p>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Terrazzo R1 Sports Club
+              Terrazzo R1 Sports Club · Rua Rubens Guelli, 68 - Terraço - Itaigara, Salvador - BA,
+              41815-135
             </p>
           </div>
           <Link to="/" className="text-sm font-semibold text-orange-600">
@@ -568,7 +569,8 @@ const Agendar = () => {
               {selected && (
                 <>
                   {formatDay(selected.slot_datetime)} às {formatTime(selected.slot_datetime)} — te
-                  esperamos na Fellice Fitness (Terrazzo R1 Sports Club).
+                  esperamos na Fellice Fitness (Terrazzo R1 Sports Club, Rua Rubens Guelli, 68 -
+                  Terraço - Itaigara, Salvador - BA).
                 </>
               )}
             </p>

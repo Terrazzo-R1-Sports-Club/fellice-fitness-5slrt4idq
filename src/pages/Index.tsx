@@ -23,7 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 const FORM_ID = 'fellice-captura-01'
-const FORM_VERSION = 'v1.1.0'
+const FORM_VERSION = 'v1.1.1'
 const BACKEND_URL = import.meta.env.VITE_POCKETBASE_URL
 const WHATSAPP_ATENDIMENTO = '5571993960018'
 
@@ -222,14 +222,14 @@ const ETAPAS_INFO = [
     titulo: 'Rotina',
     pergunta: 'Como é a sua rotina de trabalho ou estudos?',
     subtitulo: 'Isso nos ajuda a sugerir os melhores horários de treino.',
-    microcopy: 'Etapa 6 de 7 — Falta só mais uma etapa para desbloquear seu prêmio!',
+    microcopy: 'Etapa 6 de 7 — Falta só mais uma etapa para concluir sua triagem!',
   },
   {
     numero: 7,
     titulo: 'Confirmação',
     pergunta: 'Pronto para conhecer o nosso rooftop?',
     subtitulo: 'Escolha como prefere iniciar sua experiência e confirme sua autorização.',
-    microcopy: 'Etapa 7 de 7 — Conclua agora e garanta sua Aula Experimental Gratuita!',
+    microcopy: 'Etapa 7 de 7 — Conclua agora para finalizar sua triagem!',
   },
 ]
 
@@ -402,7 +402,7 @@ export function Index() {
         }
         if (!formData.consentimento) {
           novosErros.consentimento =
-            'É necessário autorizar o contato da academia para enviar a triagem e resgatar o prêmio.'
+            'É necessário autorizar o contato da academia para enviar a triagem.'
         }
         break
       }
@@ -583,7 +583,8 @@ export function Index() {
                 Fellice Fitness
               </p>
               <p className="text-sm font-medium text-muted-foreground">
-                Terrazzo R1 Sports Club · Alto do Itaigara
+                Terrazzo R1 Sports Club · Rua Rubens Guelli, 68 - Terraço - Itaigara, Salvador - BA,
+                41815-135
               </p>
             </div>
           </div>
@@ -1152,8 +1153,8 @@ export function Index() {
                         <div className="space-y-1">
                           <p className="text-xs leading-relaxed text-muted-foreground">
                             Autorizo a Fellice Fitness a entrar em contato pelos meios eletrônicos
-                            informados (WhatsApp, telefone e e-mail) para liberar minha Aula
-                            Experimental Gratuita, avisos e informações da academia.
+                            informados (WhatsApp, telefone e e-mail) para enviar minha triagem,
+                            avisos e informações da academia.
                           </p>
                         </div>
                       </label>
@@ -1202,8 +1203,8 @@ export function Index() {
                     </>
                   ) : etapaAtual === 7 ? (
                     <>
-                      Concluir & Resgatar Prêmio
-                      <Trophy className="ml-2 h-4 w-4" />
+                      Concluir
+                      <CheckCircle2 className="ml-2 h-4 w-4" />
                     </>
                   ) : (
                     <>
@@ -1216,7 +1217,10 @@ export function Index() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 text-xs text-muted-foreground">
-              <p>Terrazzo R1 Sports Club · Rua Rosa dos Ventos, Alto do Itaigara</p>
+              <p>
+                Terrazzo R1 Sports Club · Rua Rubens Guelli, 68 - Terraço - Itaigara, Salvador - BA,
+                41815-135
+              </p>
               <div className="flex items-center gap-4">
                 <Link to="/agendar" className="font-semibold text-primary hover:underline">
                   Agendamento direto de visita
