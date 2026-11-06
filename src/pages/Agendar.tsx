@@ -210,7 +210,10 @@ const Agendar = () => {
       conflict_detected: false,
       handoff_reason: reason,
       created_at: now,
-      ...prioridadeAgendamento,
+      prioridade_nota: prioridadeAgendamento.nota,
+      prioridade_faixa: prioridadeAgendamento.faixa,
+      prioridade_matriz: prioridadeAgendamento.matriz,
+      prioridade_motivo: prioridadeAgendamento.motivo,
     })
     await createRecord('lead_appointment_events', {
       event_id: crypto.randomUUID(),
@@ -261,7 +264,10 @@ const Agendar = () => {
           status: 'CONCLUIDO',
           conflict_detected: false,
           concluded_at: now,
-          ...prioridadeAgendamento,
+          prioridade_nota: prioridadeAgendamento.nota,
+          prioridade_faixa: prioridadeAgendamento.faixa,
+          prioridade_matriz: prioridadeAgendamento.matriz,
+          prioridade_motivo: prioridadeAgendamento.motivo,
         })
         await createRecord('lead_appointment_events', {
           event_id: crypto.randomUUID(),
@@ -290,7 +296,10 @@ const Agendar = () => {
           conflict_detected: false,
           created_at: now,
           concluded_at: now,
-          ...prioridadeAgendamento,
+          prioridade_nota: prioridadeAgendamento.nota,
+          prioridade_faixa: prioridadeAgendamento.faixa,
+          prioridade_matriz: prioridadeAgendamento.matriz,
+          prioridade_motivo: prioridadeAgendamento.motivo,
         })
         await createRecord('lead_appointment_events', {
           event_id: crypto.randomUUID(),

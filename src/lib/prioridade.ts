@@ -81,6 +81,6 @@ export function calcularPrioridade(
 }
 
 export function rotuloPrioridade(p: Prioridade | null | undefined): string {
-  if (!p || p.faixa === 'sem_pontuacao') return 'Sem pontuação'
+  if (!p || !p.faixa || p.faixa === 'sem_pontuacao') return 'Sem pontuação'
   return `${p.faixa === 'alta' ? 'Alta' : p.faixa === 'media' ? 'Média' : 'Baixa'} · ${p.nota}`
 }
