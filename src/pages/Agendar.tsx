@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { avaliarElegibilidade } from '@/lib/elegibilidade'
 import { calcularPrioridade } from '@/lib/prioridade'
 
 // F2-IMP-003 / SPEC-2-001 — seleção e conclusão do agendamento.
@@ -118,6 +119,28 @@ const Agendar = () => {
   const leadSubmissionId = useRef(
     triageValida && triage ? triage.lead_submission_id : crypto.randomUUID(),
   )
+  // REF-06 / SPEC-4-004 (CA-4-R06) — acesso direto a /agendar sem triagem: sem respostas
+  // não há perfil a avaliar (insumo 3) → caminho do atendente, sem grade e sem reserva.
+  const acessoDireto = !triageValida
+  useEffect(() => {
+    if (!acessoDireto || step !== 'grade') return
+    let cancelado = false
+    const encaminhar = async () => {
+      try {
+        await handoffToHuman('ACESSO_DIRETO_SEM_TRIAGEM: perfil não avaliado; atendimento humano')
+      } catch (err) {
+        if (!cancelado) {
+          console.error(err)
+          setError('Não foi possível registrar seu pedido agora. Tente novamente em instantes.')
+        }
+      }
+    }
+    encaminhar()
+    return () => {
+      cancelado = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acessoDireto, step])
   const [occupancy, setOccupancy] = useState<Record<string, number>>({})
 
   // REF-02: pré-preencher uma única vez com as respostas da triagem do mesmo atendimento.

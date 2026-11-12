@@ -18,6 +18,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { avaliarElegibilidade } from '@/lib/elegibilidade'
+import type { ResultadoElegibilidade } from '@/lib/elegibilidade'
 import { calcularPrioridade } from '@/lib/prioridade'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -310,6 +312,10 @@ export function Index() {
   const [formData, setFormData] = useState<LeadFormData>(initialFormData)
   const [erros, setErros] = useState<Record<string, string>>({})
   const [statusEnvio, setStatusEnvio] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
+  // REF-06 — resultado da elegibilidade quando o perfil não qualifica (tela de encaminhamento)
+  const [elegibilidadeBloqueio, setElegibilidadeBloqueio] = useState<ResultadoElegibilidade | null>(
+    null,
+  )
   const [erroEnvio, setErroEnvio] = useState<string>('')
 
   const startedAt = useRef(new Date().toISOString())
@@ -548,6 +554,52 @@ export function Index() {
         })
       }
 
+      // REF-06 / SPEC-4-004 (CA-4-R06) — elegibilidade por perfil no fim da triagem.
+      // Ajuda humana é exceção (insumo 3): quem pediu atendimento humano não é bloqueado.
+      // NAO_QUALIFICADO e AUSENTE → handoff na Fila; sem grade e sem oferta de WhatsApp.
+      const elegibilidade = avaliarElegibilidade(
+        formData.proximidade,
+        formData.ocupacao,
+        profissaoFinal,
+      )
+      const ajudaHumana = formData.precisa_de_ajuda_humana === true
+      if (!ajudaHumana && elegibilidade.veredito !== 'QUALIFICADO') {
+        const handoffId = crypto.randomUUID()
+        await createRecord('lead_handoffs', {
+          handoff_id: handoffId,
+          lead_submission_id: leadSubmissionId.current,
+          form_id: FORM_ID,
+          form_version: FORM_VERSION,
+          created_at: now,
+          motivo: elegibilidade.motivo,
+          nome: formData.nome.trim(),
+          canal_de_retorno: canalDeRetorno,
+          objetivo: formData.objetivo,
+          proximidade: formData.proximidade,
+          ocupacao: formData.ocupacao,
+          profissao: profissaoFinal,
+          prioridade_nota: prioridade.nota,
+          prioridade_faixa: prioridade.faixa,
+          prioridade_matriz: prioridade.matriz,
+          prioridade_motivo: prioridade.motivo,
+          interesse_em_visita: formData.interesse_em_visita,
+          utm_source: utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
+          attribution_status: attributionStatus,
+          status: 'PENDENTE',
+        })
+        await createRecord('lead_handoff_events', {
+          event_id: crypto.randomUUID(),
+          handoff_id: handoffId,
+          lead_submission_id: leadSubmissionId.current,
+          event_type: 'HANDOFF_CREATED',
+          occurred_at: now,
+          payload: { status: 'PENDENTE', motivo: elegibilidade.motivo },
+        })
+        setElegibilidadeBloqueio(elegibilidade)
+      }
+
       setStatusEnvio('success')
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) {
@@ -626,7 +678,47 @@ export function Index() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        {statusEnvio === 'success' ? (
+        {statusEnvio === 'success' && elegibilidadeBloqueio ? (
+          <div className="rounded-3xl border border-orange-200 bg-card p-6 shadow-2xl transition-all duration-300 sm:p-10">
+            <div className="text-center">
+              <div className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                <HelpCircle className="h-10 w-10" />
+              </div>
+              <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                <CheckCircle2 className="h-4 w-4" /> Triagem Concluída
+              </span>
+              <h1 className="mt-4 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+                Recebemos suas respostas, {formData.nome.trim()}!
+              </h1>
+              <p className="mt-3 text-lg font-medium text-foreground">
+                Com base nas suas respostas, nossa equipe vai entrar em contato para encontrar o
+                melhor caminho com você.
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Seu atendimento foi encaminhado para a equipe da Fellice Fitness (Terrazzo R1 Sports
+                Club), que falará com você pelo canal informado.
+              </p>
+            </div>
+
+            <div className="mt-8 text-center">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setFormData(initialFormData)
+                  setEtapaAtual(1)
+                  setStatusEnvio('idle')
+                  setElegibilidadeBloqueio(null)
+                  leadSubmissionId.current = crypto.randomUUID()
+                  startedAt.current = new Date().toISOString()
+                  startedEventRecorded.current = false
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Preencher nova triagem
+              </Button>
+            </div>
+          </div>
+        ) : statusEnvio === 'success' ? (
           <div className="rounded-3xl border border-emerald-500/30 bg-card p-6 shadow-2xl transition-all duration-300 sm:p-10">
             <div className="text-center">
               <div className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -733,6 +825,7 @@ export function Index() {
                   setFormData(initialFormData)
                   setEtapaAtual(1)
                   setStatusEnvio('idle')
+                  setElegibilidadeBloqueio(null)
                   leadSubmissionId.current = crypto.randomUUID()
                   startedAt.current = new Date().toISOString()
                   startedEventRecorded.current = false
