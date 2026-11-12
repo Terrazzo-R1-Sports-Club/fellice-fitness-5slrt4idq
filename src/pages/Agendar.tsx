@@ -422,6 +422,15 @@ const Agendar = () => {
 
         {step === 'grade' && (
           <section className="mt-8">
+            {/* REF-06 — falha do encaminhamento no acesso direto não pode ficar silenciosa */}
+            {error && (
+              <p
+                role="alert"
+                className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300"
+              >
+                {error}
+              </p>
+            )}
             {loadingSlots && <p className="text-slate-500">Carregando horários...</p>}
             {loadError && (
               <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-800 dark:border-slate-800 dark:bg-red-950/50 dark:text-red-300">
