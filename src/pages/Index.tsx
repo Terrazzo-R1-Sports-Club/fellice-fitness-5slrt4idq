@@ -1043,8 +1043,8 @@ export function Index() {
                       <p className="text-sm font-medium text-destructive">{erros.objetivo}</p>
                     )}
                     {formData.objetivo && VIDEO_POR_OBJETIVO[formData.objetivo] && (
-                      <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                        <div className="aspect-video w-full">
+                      <div className="mx-auto mt-4 w-full max-w-[320px] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                        <div className="aspect-[9/16] w-full">
                           <iframe
                             src={`https://drive.google.com/file/d/${VIDEO_POR_OBJETIVO[formData.objetivo]}/preview`}
                             title={`Vídeo — ${formData.objetivo}`}
@@ -1208,8 +1208,8 @@ export function Index() {
                     )}
                     {VIDEO_DIFERENCIAIS && (
                       <div className="mt-6 space-y-3">
-                        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                          <div className="aspect-video w-full">
+                        <div className="mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                          <div className="aspect-[9/16] w-full">
                             <iframe
                               src={`https://drive.google.com/file/d/${VIDEO_DIFERENCIAIS}/preview`}
                               title="Conheça o Fellice Fitness"
