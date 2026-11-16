@@ -26,7 +26,21 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 const FORM_ID = 'fellice-captura-01'
-const FORM_VERSION = 'v1.2.0'
+const FORM_VERSION = 'v1.2.1'
+
+// REF-07 — vídeos do formulário (insumos 4/4 aprovados pelo consultor em 17–18/11/2026,
+// registrados em 04_fase-atual/ref07-insumos.md). Mídias do Drive da cliente, exibidas
+// pelo player embutido do Google Drive (iframe /preview); reprodução automática e
+// NÃO bloqueante — avançar nunca depende do vídeo. Sem upload, conversão ou tracking novo.
+const VIDEO_DIFERENCIAIS = '1OWAIuHhBk76_dmt7dzKOb-nOi5rEK8e2'
+const VIDEO_POR_OBJETIVO: Record<string, string> = {
+  Emagrecimento: '1izYU8RrUkx2dQRAMVVoD1HePVlJ9YDcx',
+  'Ganho de massa muscular': '1uZ_e4on5WJucL6flgEuvzIR2uNAYRpkT',
+  'Condicionamento físico e resistência': '1ZUfnoXanlLzYl3nABYQJU1nqA46uDlTy',
+  'Saúde, mobilidade e qualidade de vida': '1iwR-xN4CDskj-EtOMQqzZINCy4Ld0rWk',
+}
+// Objetivos sem vídeo (etapa segue direta): Recuperação de lesões,
+// Melhorar a performance esportiva e Ainda não defini meu objetivo.
 const BACKEND_URL = import.meta.env.VITE_POCKETBASE_URL
 const WHATSAPP_ATENDIMENTO = '5571993960018'
 
@@ -1028,6 +1042,19 @@ export function Index() {
                     {erros.objetivo && (
                       <p className="text-sm font-medium text-destructive">{erros.objetivo}</p>
                     )}
+                    {formData.objetivo && VIDEO_POR_OBJETIVO[formData.objetivo] && (
+                      <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                        <div className="aspect-video w-full">
+                          <iframe
+                            src={`https://drive.google.com/file/d/${VIDEO_POR_OBJETIVO[formData.objetivo]}/preview`}
+                            title={`Vídeo — ${formData.objetivo}`}
+                            allow="autoplay; encrypted-media; fullscreen"
+                            allowFullScreen
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1177,6 +1204,32 @@ export function Index() {
                             {erros.profissao_outros}
                           </p>
                         )}
+                      </div>
+                    )}
+                    {VIDEO_DIFERENCIAIS && (
+                      <div className="mt-6 space-y-3">
+                        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                          <div className="aspect-video w-full">
+                            <iframe
+                              src={`https://drive.google.com/file/d/${VIDEO_DIFERENCIAIS}/preview`}
+                              title="Conheça o Fellice Fitness"
+                              allow="autoplay; encrypted-media; fullscreen"
+                              allowFullScreen
+                              className="h-full w-full"
+                            />
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+                          <p className="text-sm font-bold text-foreground">
+                            Um espaço pensado para elevar sua experiência de treino.
+                          </p>
+                          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            Estrutura, tecnologia, conforto e possibilidades para cuidar do corpo,
+                            superar limites e transformar sua rotina. E tem mais: você ainda pode
+                            aproveitar a vista da cidade e correr em uma pista de cooper ao ar
+                            livre.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
