@@ -58,6 +58,14 @@ const STATUS_STYLE: Record<string, string> = {
   ENCAMINHAMENTO_HUMANO: 'bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300',
 }
 
+// REF-08: rótulos de exibição — nenhum valor interno muda; status sem entrada no
+// mapa continua sendo exibido com o valor cru (ex.: ENCAMINHAMENTO_HUMANO).
+const STATUS_LABELS: Record<string, string> = {
+  TENTATIVA: 'Em andamento',
+  CONCLUIDO: 'Agendado',
+  DESISTENCIA: 'Sem interesse',
+}
+
 const formatDate = (value?: string) =>
   value ? new Date(value.replace(' ', 'T')).toLocaleString('pt-BR') : '—'
 
@@ -288,7 +296,7 @@ const Visao = () => {
             </p>
             <h1 className="mt-2 text-4xl font-black tracking-tight">Visão operacional</h1>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
-              Tentativas de agendamento com contexto da triagem. Leitura — a conclusão vem da
+              Em andamento de agendamento com contexto da triagem. Leitura — a conclusão vem da
               agenda.
             </p>
           </div>
@@ -370,7 +378,7 @@ const Visao = () => {
                         : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'
                     }`}
                   >
-                    {status} ({total})
+                    {STATUS_LABELS[status] || status} ({total})
                   </button>
                 ))}
               </div>
@@ -451,7 +459,7 @@ const Visao = () => {
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLE[appt.status] || ''}`}
                       >
-                        {appt.status}
+                        {STATUS_LABELS[appt.status] || appt.status}
                       </span>
                       <span
                         className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -621,7 +629,7 @@ const Visao = () => {
               <span
                 className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLE[detail.status] || ''}`}
               >
-                {detail.status}
+                {STATUS_LABELS[detail.status] || detail.status}
               </span>
             </div>
 
