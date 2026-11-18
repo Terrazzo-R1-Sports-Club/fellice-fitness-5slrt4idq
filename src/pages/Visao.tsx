@@ -302,7 +302,7 @@ const Visao = () => {
         slot_id: s.slot_id,
         slot_datetime: s.slot_datetime,
         slot_duration_min: Number(s.slot_duration_min) || 30,
-        capacity: occ[s.slot_id]?.capacity ?? Number(s.capacity) || 1,
+        capacity: occ[s.slot_id]?.capacity ?? (Number(s.capacity) || 1),
         active: occ[s.slot_id]?.active ?? 0,
       }))
       setRescheduleSlots(lista.filter((s) => s.active < s.capacity))
@@ -758,7 +758,9 @@ const Visao = () => {
             setRescheduleDone('')
             setDetail(null)
           }}
-        >          <div
+        >
+          {' '}
+          <div
             className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-orange-100 bg-white p-7 dark:border-slate-800 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
@@ -848,7 +850,8 @@ const Visao = () => {
                   Reagendar este agendamento
                 </p>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  A reserva atual é preservada até a confirmação; o histórico fica na trilha de eventos.
+                  A reserva atual é preservada até a confirmação; o histórico fica na trilha de
+                  eventos.
                 </p>
                 {!rescheduleOpen && (
                   <button
