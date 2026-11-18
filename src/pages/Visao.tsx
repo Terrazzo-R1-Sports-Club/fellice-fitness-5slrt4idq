@@ -363,7 +363,8 @@ const Visao = () => {
       })
       setRescheduleDone(
         `Agendamento de ${appt.nome || 'lead'} remarcado para ${formatSlotRotulo(slot.slot_datetime)}.`,
-      )      setDetail(null)
+      )
+      setDetail(null)
       setReschedulePick('')
       setRescheduleConfirm(false)
       await load()
