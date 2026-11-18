@@ -69,6 +69,30 @@ const STATUS_LABELS: Record<string, string> = {
 const formatDate = (value?: string) =>
   value ? new Date(value.replace(' ', 'T')).toLocaleString('pt-BR') : '—'
 
+// REF-09 — slot ABERTO com vaga, mesma leitura pública do Agendar (RN-2.01):
+// agenda_slots ABERTO + ocupação real de agenda_slot_occupancy; slot cheio
+// (active >= capacity) não é ofertado.
+type RescheduleSlot = {
+  slot_id: string
+  slot_datetime: string
+  slot_duration_min: number
+  capacity: number
+  active: number
+}
+
+type RescheduleSlotBase = {
+  slot_id: string
+  slot_datetime: string
+  slot_duration_min: number
+  capacity?: number
+}
+
+type OccupancyRow = {
+  slot_id: string
+  capacity: number
+  active: number
+}
+
 const Visao = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -85,6 +109,15 @@ const Visao = () => {
   const [queueEnabled, setQueueEnabled] = useState(true)
   const [rollbackReason, setRollbackReason] = useState('')
   const [myRole, setMyRole] = useState('')
+  // REF-09 — reagendamento pelo operador (única ação de escrita da Visão).
+  const [rescheduling, setRescheduling] = useState('') // id do appt em envio
+  const [rescheduleSlots, setRescheduleSlots] = useState<RescheduleSlot[]>([])
+  const [rescheduleLoading, setRescheduleLoading] = useState(false)
+  const [rescheduleError, setRescheduleError] = useState('')
+  const [reschedulePick, setReschedulePick] = useState('') // slot_id escolhido
+  const [rescheduleOpen, setRescheduleOpen] = useState(false) // painel aberto no modal
+  const [rescheduleConfirm, setRescheduleConfirm] = useState(false) // confirmação exibida
+  const [rescheduleDone, setRescheduleDone] = useState('') // mensagem de sucesso
 
   // Identidade lida do authStore NO RENDER — nunca estado capturado no mount:
   // login/logout na mesma montagem não podem deixar a comparação "por você"
@@ -239,6 +272,101 @@ const Visao = () => {
       )
     } finally {
       setAssuming('')
+    }
+  }
+
+  // REF-09 — reagendar preservando vínculo e histórico: UPDATE no MESMO registro
+  // (appointment_id, lead_submission_id e criado-em nunca mudam) + evento
+  // APPOINTMENT_RESCHEDULED com actor do operador. Capacidade do slot novo e
+  // liberação da vaga antiga são garantidas pelo hook enforce_slot_capacity
+  // (UPDATE sincroniza ambos os slots). Duplo clique contido pelo disabled.
+  const loadRescheduleSlots = async () => {
+    if (!pb.authStore.isValid) return
+    setRescheduleLoading(true)
+    setRescheduleError('')
+    try {
+      const [slots, occRows] = await Promise.all([
+        pb.collection('agenda_slots').getFullList<RescheduleSlotBase>({
+          filter: "status='ABERTO'",
+          sort: 'slot_datetime',
+        }),
+        pb.collection('agenda_slot_occupancy').getFullList<OccupancyRow>({
+          sort: 'slot_id',
+        }),
+      ])
+      const occ: Record<string, { active: number; capacity: number }> = {}
+      for (const o of occRows) {
+        occ[o.slot_id] = { active: Number(o.active) || 0, capacity: Number(o.capacity) || 1 }
+      }
+      const lista: RescheduleSlot[] = slots.map((s) => ({
+        slot_id: s.slot_id,
+        slot_datetime: s.slot_datetime,
+        slot_duration_min: Number(s.slot_duration_min) || 30,
+        capacity: occ[s.slot_id]?.capacity ?? Number(s.capacity) || 1,
+        active: occ[s.slot_id]?.active ?? 0,
+      }))
+      setRescheduleSlots(lista.filter((s) => s.active < s.capacity))
+      setReschedulePick('')
+      setRescheduleConfirm(false)
+    } catch (err) {
+      console.error(err)
+      setRescheduleError('Falha ao carregar a grade de horários.')
+    } finally {
+      setRescheduleLoading(false)
+    }
+  }
+
+  const confirmarReagendamento = async (appt: Appointment) => {
+    if (!pb.authStore.isValid) return
+    if (!reschedulePick) {
+      setRescheduleError('Escolha um horário antes de confirmar.')
+      return
+    }
+    const slot = rescheduleSlots.find((s) => s.slot_id === reschedulePick)
+    if (!slot) {
+      setRescheduleError('Horário indisponível. Escolha outro, por favor.')
+      return
+    }
+    const actorId = pb.authStore.record?.id || ''
+    setRescheduling(appt.id)
+    setRescheduleError('')
+    try {
+      const now = new Date().toISOString()
+      const sameSlot = appt.slot_id === slot.slot_id
+      await pb.collection('lead_appointments').update(appt.id, {
+        slot_id: slot.slot_id,
+        slot_datetime: slot.slot_datetime,
+        slot_duration_min: slot.slot_duration_min,
+      })
+      await pb.collection('lead_appointment_events').create({
+        event_id: crypto.randomUUID(),
+        appointment_id: appt.appointment_id,
+        lead_submission_id: appt.lead_submission_id,
+        event_type: 'APPOINTMENT_RESCHEDULED',
+        occurred_at: now,
+        actor_id: actorId,
+        payload: {
+          from: { slot_id: appt.slot_id, slot_datetime: appt.slot_datetime },
+          to: { slot_id: slot.slot_id, slot_datetime: slot.slot_datetime },
+          same_slot: sameSlot,
+        },
+      })
+      setRescheduleDone(
+        `Agendamento de ${appt.nome || 'lead'} remarcado para ${formatDate(slot.slot_datetime)}.`,
+      )
+      setDetail(null)
+      setReschedulePick('')
+      setRescheduleConfirm(false)
+      await load()
+    } catch (err) {
+      console.error(err)
+      setRescheduleError(
+        err instanceof Error
+          ? `Falha ao reagendar: ${err.message}`
+          : 'Falha ao reagendar — a reserva anterior foi preservada.',
+      )
+    } finally {
+      setRescheduling('')
     }
   }
 
@@ -599,7 +727,15 @@ const Visao = () => {
                       </div>
                     )}
                     <button
-                      onClick={() => setDetail(appt)}
+                      onClick={() => {
+                        // REF-09 — painel de reagendamento começa fechado a cada modal
+                        setRescheduleOpen(false)
+                        setReschedulePick('')
+                        setRescheduleConfirm(false)
+                        setRescheduleError('')
+                        setRescheduleDone('')
+                        setDetail(appt)
+                      }}
                       className="mt-4 text-sm font-semibold text-orange-600 underline-offset-4 hover:underline"
                     >
                       Ver contexto completo
@@ -615,9 +751,14 @@ const Visao = () => {
       {detail && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-5"
-          onClick={() => setDetail(null)}
-        >
-          <div
+          onClick={() => {
+            setRescheduleOpen(false)
+            setReschedulePick('')
+            setRescheduleError('')
+            setRescheduleDone('')
+            setDetail(null)
+          }}
+        >          <div
             className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-orange-100 bg-white p-7 dark:border-slate-800 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
           >
@@ -701,6 +842,85 @@ const Visao = () => {
               )}
             </dl>
 
+            {(detail.status === 'CONCLUIDO' || detail.status === 'TENTATIVA') && (
+              <div className="mt-6 rounded-2xl border border-orange-200 bg-orange-50/60 p-4 dark:border-orange-900 dark:bg-orange-950/30">
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Reagendar este agendamento
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  A reserva atual é preservada até a confirmação; o histórico fica na trilha de eventos.
+                </p>
+                {!rescheduleOpen && (
+                  <button
+                    onClick={() => {
+                      setRescheduleOpen(true)
+                      loadRescheduleSlots()
+                    }}
+                    className="mt-3 min-h-10 rounded-xl border border-orange-300 bg-white px-4 text-sm font-bold text-orange-700 dark:bg-slate-900"
+                  >
+                    Reagendar
+                  </button>
+                )}
+                {rescheduleOpen && (
+                  <div className="mt-3 space-y-3">
+                    {rescheduleLoading && (
+                      <p className="text-sm text-slate-500">Carregando horários…</p>
+                    )}
+                    {rescheduleError && (
+                      <p
+                        role="alert"
+                        className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300"
+                      >
+                        {rescheduleError}
+                      </p>
+                    )}
+                    {rescheduleDone && (
+                      <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        {rescheduleDone}
+                      </p>
+                    )}
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                      {rescheduleSlots.map((s) => (
+                        <button
+                          key={s.slot_id}
+                          onClick={() => {
+                            setReschedulePick(s.slot_id)
+                            setRescheduleConfirm(false)
+                          }}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-sm ${
+                            reschedulePick === s.slot_id
+                              ? 'bg-orange-600 font-bold text-white'
+                              : 'hover:bg-orange-50 dark:hover:bg-orange-950/40'
+                          }`}
+                        >
+                          <span>{formatDate(s.slot_datetime)}</span>
+                          <span className="text-xs">{s.capacity - s.active} vagas</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        disabled={!reschedulePick || rescheduling === detail.id}
+                        onClick={() => confirmarReagendamento(detail)}
+                        className="min-h-10 rounded-xl bg-orange-600 px-4 text-sm font-bold text-white disabled:opacity-50"
+                      >
+                        {rescheduling === detail.id ? 'Reagendando…' : 'Confirmar reagendamento'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRescheduleOpen(false)
+                          setReschedulePick('')
+                          setRescheduleConfirm(false)
+                        }}
+                        className="min-h-10 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <button
               onClick={() => setDetail(null)}
               className="mt-6 min-h-12 w-full rounded-xl bg-orange-600 px-5 font-bold text-white"
