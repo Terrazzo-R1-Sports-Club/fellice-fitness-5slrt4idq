@@ -69,6 +69,16 @@ const STATUS_LABELS: Record<string, string> = {
 const formatDate = (value?: string) =>
   value ? new Date(value.replace(' ', 'T')).toLocaleString('pt-BR') : '—'
 
+// REF-09 r2 — o Agendar exibe o horário do slot como gravado (string crua,
+// sem conversão de fuso); o painel de reagendamento segue a MESMA convenção
+// para o operador ver o mesmo horário que o lead vê no formulário.
+const formatSlotDia = (iso: string) => {
+  const [ano, mes, dia] = iso.slice(0, 10).split('-')
+  return `${dia}/${mes}/${ano}`
+}
+const formatSlotHora = (iso: string) => iso.slice(11, 16)
+const formatSlotRotulo = (iso: string) => `${formatSlotDia(iso)} ${formatSlotHora(iso)}`
+
 // REF-09 — slot ABERTO com vaga, mesma leitura pública do Agendar (RN-2.01):
 // agenda_slots ABERTO + ocupação real de agenda_slot_occupancy; slot cheio
 // (active >= capacity) não é ofertado.
@@ -352,9 +362,8 @@ const Visao = () => {
         },
       })
       setRescheduleDone(
-        `Agendamento de ${appt.nome || 'lead'} remarcado para ${formatDate(slot.slot_datetime)}.`,
-      )
-      setDetail(null)
+        `Agendamento de ${appt.nome || 'lead'} remarcado para ${formatSlotRotulo(slot.slot_datetime)}.`,
+      )      setDetail(null)
       setReschedulePick('')
       setRescheduleConfirm(false)
       await load()
@@ -896,7 +905,7 @@ const Visao = () => {
                               : 'hover:bg-orange-50 dark:hover:bg-orange-950/40'
                           }`}
                         >
-                          <span>{formatDate(s.slot_datetime)}</span>
+                          <span>{formatSlotRotulo(s.slot_datetime)}</span>
                           <span className="text-xs">{s.capacity - s.active} vagas</span>
                         </button>
                       ))}
