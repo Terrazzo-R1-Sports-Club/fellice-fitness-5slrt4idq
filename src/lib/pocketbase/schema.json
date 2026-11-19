@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-18T20:45:24.028Z",
+  "generatedAt": "2026-11-19T12:42:43.297Z",
   "collections": [
     {
       "name": "users",
@@ -1120,6 +1120,24 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "sem_perfil_at",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sem_perfil_motivo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sem_perfil_por",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1171,7 +1189,8 @@
             "APPOINTMENT_ESCALATED",
             "APPOINTMENT_REASSIGNED",
             "APPOINTMENT_CLOSED",
-            "APPOINTMENT_RESCHEDULED"
+            "APPOINTMENT_RESCHEDULED",
+            "APPOINTMENT_SEM_PERFIL"
           ]
         },
         {
