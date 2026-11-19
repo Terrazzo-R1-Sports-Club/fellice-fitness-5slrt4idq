@@ -458,6 +458,12 @@ const Visao = () => {
     }
   }
 
+  const logout = () => {
+    pb.authStore.clear()
+    setAppointments([])
+    setDetail(null)
+  }
+
   const filtered =
     filter === 'TODOS'
       ? appointments
