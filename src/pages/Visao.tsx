@@ -489,7 +489,7 @@ const Visao = () => {
             </Link>
             <p className="mt-5 text-xs font-bold uppercase tracking-[0.24em] text-orange-600">
               Fellice Fitness
-  </p>
+            </p>
             <h1 className="mt-2 text-4xl font-black tracking-tight">Visão operacional</h1>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
               Em andamento de agendamento com contexto da triagem. Leitura — a conclusão vem da
