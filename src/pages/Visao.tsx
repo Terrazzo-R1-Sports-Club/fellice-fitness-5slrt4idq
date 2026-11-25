@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase/client'
+import { rotuloPrioridade } from '@/lib/prioridade'
 
 // F2-IMP-008 / SPEC-2-002 — visão operacional com fila, escalada e rollback.
 // Estado continua ENCAMINHAMENTO_HUMANO ao escalar/encerrar; a transição para
@@ -42,6 +43,13 @@ type Appointment = {
   utm_medium?: string
   utm_campaign?: string
   attribution_status?: string
+  prioridade_nota?: number
+  prioridade_faixa?: 'alta' | 'media' | 'baixa' | 'sem_pontuacao'
+  prioridade_matriz?: string
+  prioridade_motivo?: string
+  sem_perfil_at?: string
+  sem_perfil_motivo?: string
+  sem_perfil_por?: string
 }
 
 const STATUSES = ['TENTATIVA', 'CONCLUIDO', 'DESISTENCIA', 'ENCAMINHAMENTO_HUMANO'] as const
@@ -53,8 +61,50 @@ const STATUS_STYLE: Record<string, string> = {
   ENCAMINHAMENTO_HUMANO: 'bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300',
 }
 
+// REF-08: rótulos de exibição — nenhum valor interno muda; status sem entrada no
+// mapa continua sendo exibido com o valor cru (ex.: ENCAMINHAMENTO_HUMANO).
+const STATUS_LABELS: Record<string, string> = {
+  TENTATIVA: 'Em andamento',
+  CONCLUIDO: 'Agendado',
+  DESISTENCIA: 'Sem interesse',
+}
+
 const formatDate = (value?: string) =>
   value ? new Date(value.replace(' ', 'T')).toLocaleString('pt-BR') : '—'
+
+// REF-09 r2 — o Agendar exibe o horário do slot como gravado (string crua,
+// sem conversão de fuso); o painel de reagendamento segue a MESMA convenção
+// para o operador ver o mesmo horário que o lead vê no formulário.
+const formatSlotDia = (iso: string) => {
+  const [ano, mes, dia] = iso.slice(0, 10).split('-')
+  return `${dia}/${mes}/${ano}`
+}
+const formatSlotHora = (iso: string) => iso.slice(11, 16)
+const formatSlotRotulo = (iso: string) => `${formatSlotDia(iso)} ${formatSlotHora(iso)}`
+
+// REF-09 — slot ABERTO com vaga, mesma leitura pública do Agendar (RN-2.01):
+// agenda_slots ABERTO + ocupação real de agenda_slot_occupancy; slot cheio
+// (active >= capacity) não é ofertado.
+type RescheduleSlot = {
+  slot_id: string
+  slot_datetime: string
+  slot_duration_min: number
+  capacity: number
+  active: number
+}
+
+type RescheduleSlotBase = {
+  slot_id: string
+  slot_datetime: string
+  slot_duration_min: number
+  capacity?: number
+}
+
+type OccupancyRow = {
+  slot_id: string
+  capacity: number
+  active: number
+}
 
 const Visao = () => {
   const [email, setEmail] = useState('')
@@ -72,6 +122,22 @@ const Visao = () => {
   const [queueEnabled, setQueueEnabled] = useState(true)
   const [rollbackReason, setRollbackReason] = useState('')
   const [myRole, setMyRole] = useState('')
+  // REF-09 — reagendamento pelo operador (única ação de escrita da Visão).
+  const [rescheduling, setRescheduling] = useState('') // id do appt em envio
+  const [rescheduleSlots, setRescheduleSlots] = useState<RescheduleSlot[]>([])
+  const [rescheduleLoading, setRescheduleLoading] = useState(false)
+  const [rescheduleError, setRescheduleError] = useState('')
+  const [reschedulePick, setReschedulePick] = useState('') // slot_id escolhido
+  const [rescheduleOpen, setRescheduleOpen] = useState(false) // painel aberto no modal
+  const [rescheduleConfirm, setRescheduleConfirm] = useState(false) // confirmação exibida
+  const [rescheduleDone, setRescheduleDone] = useState('') // mensagem de sucesso
+  // REF-10 — classificação "Sem perfil" (manual, pelo operador; reversível com motivo;
+  // a reserva NÃO é alterada — liberação, se necessária, usa o reagendamento/encerramento).
+  const [classifying, setClassifying] = useState('') // id do appt em envio
+  const [classReason, setClassReason] = useState('') // motivo obrigatório
+  const [classError, setClassError] = useState('')
+  const [classDone, setClassDone] = useState('')
+  const [classOpen, setClassOpen] = useState(false) // painel aberto no modal
 
   // Identidade lida do authStore NO RENDER — nunca estado capturado no mount:
   // login/logout na mesma montagem não podem deixar a comparação "por você"
@@ -212,20 +278,156 @@ const Visao = () => {
         body: JSON.stringify({
           action: 'ASSUME',
           appointment_id: appt.appointment_id,
-          reason: 'Assunção da fila pelo primeiro Consultor disponível',
+          reason: 'assunção pela fila única',
         }),
         headers: { 'Content-Type': 'application/json' },
       })
       await load()
     } catch (err) {
       console.error(err)
-      setError(
-        err instanceof Error
-          ? `Não foi possível assumir: ${err.message}`
-          : 'Não foi possível assumir a tentativa.',
-      )
+      setError(err instanceof Error ? err.message : 'Não foi possível assumir o caso.')
     } finally {
       setAssuming('')
+    }
+  }
+
+  // REF-09 — slots ABERTOS com vaga (leitura pública, mesma do Agendar RN-2.01).
+  const loadRescheduleSlots = async () => {
+    setRescheduleLoading(true)
+    setRescheduleError('')
+    try {
+      const slots = await pb.collection<RescheduleSlotBase>('agenda_slots').getFullList({
+        filter: "status='ABERTO'",
+        sort: 'slot_datetime',
+      })
+      const occ = await pb.collection<OccupancyRow>('agenda_slot_occupancy').getFullList({})
+      const occBySlot = new Map(occ.map((o) => [o.slot_id, o]))
+      setRescheduleSlots(
+        slots
+          .map((s) => {
+            const o = occBySlot.get(s.slot_id)
+            return {
+              slot_id: s.slot_id,
+              slot_datetime: s.slot_datetime,
+              slot_duration_min: s.slot_duration_min,
+              capacity: o?.capacity ?? s.capacity ?? 1,
+              active: o?.active ?? 0,
+            }
+          })
+          .filter((s) => s.active < s.capacity),
+      )
+    } catch (err) {
+      console.error(err)
+      setRescheduleSlots([])
+      setRescheduleError('Falha ao carregar a grade de horários.')
+    } finally {
+      setRescheduleLoading(false)
+    }
+  }
+
+  // REF-10 — classificação manual "Sem perfil": UPDATE no MESMO registro (histórico
+  // preservado) + evento APPOINTMENT_SEM_PERFIL com actor do operador e payload
+  // {motivo, reversao}. Reversível com motivo (insumo 4); a reserva não é alterada
+  // (insumo 5 — decidir caso a caso); o status interno não muda (rótulo ≠ estado).
+  const classificarSemPerfil = async (appt: Appointment, reversao: boolean) => {
+    if (!pb.authStore.isValid) return
+    if (!classReason.trim()) {
+      setClassError(
+        reversao ? 'Informe o motivo da reversão.' : 'Informe o motivo da classificação.',
+      )
+      return
+    }
+    const actorId = pb.authStore.record?.id || ''
+    setClassifying(appt.id)
+    setClassError('')
+    try {
+      const now = new Date().toISOString()
+      const motivo = classReason.trim()
+      await pb.collection('lead_appointments').update(appt.id, {
+        sem_perfil_at: reversao ? '' : now,
+        sem_perfil_motivo: reversao ? '' : motivo,
+        sem_perfil_por: reversao ? '' : actorId,
+      })
+      await pb.collection('lead_appointment_events').create({
+        event_id: crypto.randomUUID(),
+        appointment_id: appt.appointment_id,
+        lead_submission_id: appt.lead_submission_id,
+        event_type: 'APPOINTMENT_SEM_PERFIL',
+        occurred_at: now,
+        actor_id: actorId,
+        payload: { motivo, reversao },
+      })
+      setClassDone(
+        reversao
+          ? `Classificação "Sem perfil" de ${appt.nome || 'lead'} revertida.`
+          : `${appt.nome || 'Lead'} classificado como "Sem perfil".`,
+      )
+      setClassReason('')
+      setClassOpen(false)
+      await load()
+    } catch (err) {
+      console.error(err)
+      setClassError(
+        err instanceof Error
+          ? `Falha ao ${reversao ? 'reverter' : 'classificar'}: ${err.message}`
+          : `Falha ao ${reversao ? 'reverter' : 'classificar'} — nada foi alterado.`,
+      )
+    } finally {
+      setClassifying('')
+    }
+  }
+
+  const confirmarReagendamento = async (appt: Appointment) => {
+    if (!pb.authStore.isValid) return
+    if (!reschedulePick) {
+      setRescheduleError('Escolha um horário antes de confirmar.')
+      return
+    }
+    const slot = rescheduleSlots.find((s) => s.slot_id === reschedulePick)
+    if (!slot) {
+      setRescheduleError('Horário indisponível. Escolha outro, por favor.')
+      return
+    }
+    const actorId = pb.authStore.record?.id || ''
+    setRescheduling(appt.id)
+    setRescheduleError('')
+    try {
+      const now = new Date().toISOString()
+      const sameSlot = appt.slot_id === slot.slot_id
+      await pb.collection('lead_appointments').update(appt.id, {
+        slot_id: slot.slot_id,
+        slot_datetime: slot.slot_datetime,
+        slot_duration_min: slot.slot_duration_min,
+      })
+      await pb.collection('lead_appointment_events').create({
+        event_id: crypto.randomUUID(),
+        appointment_id: appt.appointment_id,
+        lead_submission_id: appt.lead_submission_id,
+        event_type: 'APPOINTMENT_RESCHEDULED',
+        occurred_at: now,
+        actor_id: actorId,
+        payload: {
+          from: { slot_id: appt.slot_id, slot_datetime: appt.slot_datetime },
+          to: { slot_id: slot.slot_id, slot_datetime: slot.slot_datetime },
+          same_slot: sameSlot,
+        },
+      })
+      setRescheduleDone(
+        `Agendamento de ${appt.nome || 'lead'} remarcado para ${formatSlotRotulo(slot.slot_datetime)}.`,
+      )
+      setDetail(null)
+      setReschedulePick('')
+      setRescheduleConfirm(false)
+      await load()
+    } catch (err) {
+      console.error(err)
+      setRescheduleError(
+        err instanceof Error
+          ? `Falha ao reagendar: ${err.message}`
+          : 'Falha ao reagendar — a reserva anterior foi preservada.',
+      )
+    } finally {
+      setRescheduling('')
     }
   }
 
@@ -263,12 +465,19 @@ const Visao = () => {
   }
 
   const filtered =
-    filter === 'TODOS' ? appointments : appointments.filter((a) => a.status === filter)
+    filter === 'TODOS'
+      ? appointments
+      : filter === 'SEM_PERFIL'
+        ? appointments.filter((a) => !!a.sem_perfil_at)
+        : appointments.filter((a) => a.status === filter)
 
   const counts = STATUSES.map((s) => ({
     status: s,
     total: appointments.filter((a) => a.status === s).length,
   }))
+  // REF-10 — "Sem perfil" é classificação manual (não é status do banco); o filtro
+  // conta os registros com sem_perfil_at preenchido, distinto de "Sem interesse".
+  const semPerfilTotal = appointments.filter((a) => !!a.sem_perfil_at).length
 
   return (
     <main className="min-h-screen bg-[#fffaf5] px-5 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -283,7 +492,7 @@ const Visao = () => {
             </p>
             <h1 className="mt-2 text-4xl font-black tracking-tight">Visão operacional</h1>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
-              Tentativas de agendamento com contexto da triagem. Leitura — a conclusão vem da
+              Em andamento de agendamento com contexto da triagem. Leitura — a conclusão vem da
               agenda.
             </p>
           </div>
@@ -365,9 +574,19 @@ const Visao = () => {
                         : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'
                     }`}
                   >
-                    {status} ({total})
+                    {STATUS_LABELS[status] || status} ({total})
                   </button>
                 ))}
+                <button
+                  onClick={() => setFilter('SEM_PERFIL')}
+                  className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                    filter === 'SEM_PERFIL'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                  }`}
+                >
+                  Sem perfil ({semPerfilTotal})
+                </button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {canOperateQueue && (
@@ -379,30 +598,29 @@ const Visao = () => {
                           : 'font-bold text-red-700 dark:text-red-300'
                       }
                     >
-                      Fila: {queueEnabled ? 'ativa' : 'em rollback'}
+                      Fila {queueEnabled ? 'habilitada' : 'desabilitada'}
                     </span>
                     <input
-                      aria-label="Motivo do rollback da fila"
+                      aria-label="Motivo do rollback/reativação"
                       value={rollbackReason}
                       onChange={(e) => setRollbackReason(e.target.value)}
-                      placeholder="Motivo do controle"
-                      className="min-h-9 w-48 rounded-lg border border-slate-200 px-2 dark:border-slate-700 dark:bg-slate-950"
+                      placeholder="Motivo obrigatório"
+                      className="min-h-8 w-40 rounded-lg border border-slate-200 px-2 dark:border-slate-700 dark:bg-slate-950"
                     />
-                    {queueEnabled ? (
-                      <button
-                        onClick={() => rollbackQueue('ROLLBACK')}
-                        className="rounded-lg border border-red-200 px-3 py-2 font-bold text-red-700"
-                      >
-                        Desativar ações
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => rollbackQueue('RESTORE')}
-                        className="rounded-lg border border-emerald-200 px-3 py-2 font-bold text-emerald-700"
-                      >
-                        Reativar ações
-                      </button>
-                    )}
+                    <button
+                      disabled={!queueEnabled}
+                      onClick={() => rollbackQueue('ROLLBACK')}
+                      className="rounded-lg border border-red-200 px-2 py-1 font-bold text-red-700 disabled:opacity-50"
+                    >
+                      Rollback
+                    </button>
+                    <button
+                      disabled={queueEnabled}
+                      onClick={() => rollbackQueue('RESTORE')}
+                      className="rounded-lg border border-emerald-200 px-2 py-1 font-bold text-emerald-700 disabled:opacity-50"
+                    >
+                      Reativar
+                    </button>
                   </div>
                 )}
                 <button
@@ -446,7 +664,26 @@ const Visao = () => {
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLE[appt.status] || ''}`}
                       >
-                        {appt.status}
+                        {STATUS_LABELS[appt.status] || appt.status}
+                      </span>
+                      {appt.sem_perfil_at && (
+                        <span
+                          className="rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
+                          title={appt.sem_perfil_motivo || ''}
+                        >
+                          Sem perfil
+                        </span>
+                      )}
+                      <span
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        title={appt.prioridade_motivo || 'sem resposta de rotina'}
+                      >
+                        {rotuloPrioridade({
+                          nota: appt.prioridade_nota ?? 0,
+                          faixa: appt.prioridade_faixa ?? 'sem_pontuacao',
+                          matriz: '',
+                          motivo: '',
+                        })}
                       </span>
                     </div>
                     <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
@@ -575,10 +812,22 @@ const Visao = () => {
                       </div>
                     )}
                     <button
-                      onClick={() => setDetail(appt)}
-                      className="mt-4 text-sm font-semibold text-orange-600 underline-offset-4 hover:underline"
+                      onClick={() => {
+                        // REF-09 — painel de reagendamento começa fechado a cada modal
+                        setRescheduleOpen(false)
+                        setReschedulePick('')
+                        setRescheduleError('')
+                        setRescheduleDone('')
+                        // REF-10 — painel de classificação começa fechado a cada modal
+                        setClassOpen(false)
+                        setClassReason('')
+                        setClassError('')
+                        setClassDone('')
+                        setDetail(appt)
+                      }}
+                      className="mt-4 min-h-10 w-full rounded-xl border border-orange-200 bg-white px-4 text-sm font-bold text-orange-700 dark:border-slate-700 dark:bg-slate-900 dark:text-orange-300"
                     >
-                      Ver contexto completo
+                      Ver detalhes
                     </button>
                   </article>
                 ))}
@@ -591,8 +840,19 @@ const Visao = () => {
       {detail && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-5"
-          onClick={() => setDetail(null)}
+          onClick={() => {
+            setRescheduleOpen(false)
+            setReschedulePick('')
+            setRescheduleError('')
+            setRescheduleDone('')
+            setClassOpen(false)
+            setClassReason('')
+            setClassError('')
+            setClassDone('')
+            setDetail(null)
+          }}
         >
+          {' '}
           <div
             className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-orange-100 bg-white p-7 dark:border-slate-800 dark:bg-slate-900"
             onClick={(e) => e.stopPropagation()}
@@ -605,8 +865,16 @@ const Visao = () => {
               <span
                 className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLE[detail.status] || ''}`}
               >
-                {detail.status}
+                {STATUS_LABELS[detail.status] || detail.status}
               </span>
+              {detail.sem_perfil_at && (
+                <span
+                  className="rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
+                  title={detail.sem_perfil_motivo || ''}
+                >
+                  Sem perfil
+                </span>
+              )}
             </div>
 
             <h4 className="mt-6 text-sm font-bold uppercase tracking-wider text-slate-500">
@@ -677,6 +945,179 @@ const Visao = () => {
               )}
             </dl>
 
+            {(detail.status === 'CONCLUIDO' || detail.status === 'TENTATIVA') && (
+              <div className="mt-6 rounded-2xl border border-orange-200 bg-orange-50/60 p-4 dark:border-orange-900 dark:bg-orange-950/30">
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Reagendar este agendamento
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  A reserva atual é preservada até a confirmação; o histórico fica na trilha de
+                  eventos.
+                </p>
+                {!rescheduleOpen && (
+                  <button
+                    onClick={() => {
+                      setRescheduleOpen(true)
+                      loadRescheduleSlots()
+                    }}
+                    className="mt-3 min-h-10 rounded-xl border border-orange-300 bg-white px-4 text-sm font-bold text-orange-700 dark:bg-slate-900"
+                  >
+                    Reagendar
+                  </button>
+                )}
+                {rescheduleOpen && (
+                  <div className="mt-3 space-y-3">
+                    {rescheduleLoading && (
+                      <p className="text-sm text-slate-500">Carregando horários…</p>
+                    )}
+                    {rescheduleError && (
+                      <p
+                        role="alert"
+                        className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300"
+                      >
+                        {rescheduleError}
+                      </p>
+                    )}
+                    {rescheduleDone && (
+                      <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        {rescheduleDone}
+                      </p>
+                    )}
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                      {rescheduleSlots.map((s) => (
+                        <button
+                          key={s.slot_id}
+                          onClick={() => {
+                            setReschedulePick(s.slot_id)
+                            setRescheduleConfirm(false)
+                          }}
+                          className={`flex w-full items-center justify-between px-4 py-2 text-sm ${
+                            reschedulePick === s.slot_id
+                              ? 'bg-orange-600 font-bold text-white'
+                              : 'hover:bg-orange-50 dark:hover:bg-orange-950/40'
+                          }`}
+                        >
+                          <span>{formatSlotRotulo(s.slot_datetime)}</span>
+                          <span className="text-xs">{s.capacity - s.active} vagas</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        disabled={!reschedulePick || rescheduling === detail.id}
+                        onClick={() => confirmarReagendamento(detail)}
+                        className="min-h-10 rounded-xl bg-orange-600 px-4 text-sm font-bold text-white disabled:opacity-50"
+                      >
+                        {rescheduling === detail.id ? 'Reagendando…' : 'Confirmar reagendamento'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRescheduleOpen(false)
+                          setReschedulePick('')
+                          setRescheduleConfirm(false)
+                        }}
+                        className="min-h-10 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* REF-10 — classificação "Sem perfil": manual, motivo obrigatório,
+                reversível com motivo; a reserva não é alterada (insumos 1–5). */}
+            <div className="mt-6 rounded-2xl border border-purple-200 bg-purple-50/60 p-4 dark:border-purple-900 dark:bg-purple-950/30">
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                Classificação &quot;Sem perfil&quot
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Distinta de &quot;Sem interesse&quot;. A reserva não é alterada; o histórico fica na
+                trilha de eventos.
+              </p>
+              {classError && (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300"
+                >
+                  {classError}
+                </p>
+              )}
+              {classDone && (
+                <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                  {classDone}
+                </p>
+              )}
+              {detail.sem_perfil_at ? (
+                <div className="mt-3 space-y-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Classificado em {formatDate(detail.sem_perfil_at)}
+                    {detail.sem_perfil_motivo ? ` · motivo: ${detail.sem_perfil_motivo}` : ''}
+                  </p>
+                  <input
+                    aria-label="Motivo da reversão"
+                    value={classReason}
+                    onChange={(e) => setClassReason(e.target.value)}
+                    placeholder="Motivo obrigatório da reversão"
+                    className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      disabled={classifying === detail.id}
+                      onClick={() => classificarSemPerfil(detail, true)}
+                      className="min-h-10 rounded-xl border border-purple-300 bg-white px-4 text-sm font-bold text-purple-700 disabled:opacity-50 dark:bg-slate-900"
+                    >
+                      {classifying === detail.id ? 'Revertendo…' : 'Reverter classificação'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {!classOpen ? (
+                    <button
+                      onClick={() => {
+                        setClassOpen(true)
+                        setClassReason('')
+                        setClassError('')
+                      }}
+                      className="min-h-10 rounded-xl border border-purple-300 bg-white px-4 text-sm font-bold text-purple-700 dark:bg-slate-900"
+                    >
+                      Classificar como Sem perfil
+                    </button>
+                  ) : (
+                    <>
+                      <input
+                        aria-label="Motivo da classificação"
+                        value={classReason}
+                        onChange={(e) => setClassReason(e.target.value)}
+                        placeholder="Motivo obrigatório"
+                        className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          disabled={classifying === detail.id || !classReason.trim()}
+                          onClick={() => classificarSemPerfil(detail, false)}
+                          className="min-h-10 rounded-xl bg-purple-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+                        >
+                          {classifying === detail.id ? 'Classificando…' : 'Confirmar classificação'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setClassOpen(false)
+                            setClassReason('')
+                            setClassError('')
+                          }}
+                          className="min-h-10 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setDetail(null)}
               className="mt-6 min-h-12 w-full rounded-xl bg-orange-600 px-5 font-bold text-white"
