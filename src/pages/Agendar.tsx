@@ -1,37 +1,56 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import pb from '@/lib/pocketbase/client'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { avaliarElegibilidade } from '@/lib/elegibilidade'
+import { calcularPrioridade } from '@/lib/prioridade'
 
-// F2-IMP-005 / SPEC-2-001 — página de agendamento (grade pública de horários).
-// REF-02: pré-preenche "Seus dados" com as respostas da triagem (estado do
-// roteador) e REUSA o mesmo lead_submission_id (contrato B3-03 — sem lead
-// duplicado). REF-04: endereço aprovado no header e na confirmação; sem oferta
-// duplicada de freepass. REF-06: acesso direto sem triagem → encaminhamento
-// humano (ACESSO_DIRETO_SEM_TRIAGEM), com erro do encaminhamento visível na
-// grade (caminho de erro não silencioso — debug REF-06).
+// F2-IMP-003 / SPEC-2-001 — seleção e conclusão do agendamento.
+// Fluxo do lead: escolher slot ABERTO (RN-2.01) → preencher campos mínimos (F2-T003) →
+// confirmar (RN-2.03: TENTATIVA → CONCLUIDO com concluded_at). Fallback RN-2.05:
+// grade vazia ou falha → ENCAMINHAMENTO_HUMANO com handoff_reason, sem confirmação falsa.
+// RN-2.06: se o lead volta e escolhe outro slot, a tentativa não confirmada é ATUALIZADA
+// (índice único lead_submission_id+slot_id — contrato F2-IMP-001).
+// F2-IMP-004 debug: capacidade por slot — a página lê a ocupação real (coleção pública
+// agenda_slot_occupancy, migração 0018) e NÃO OFERTA slot cheio (active >= capacity).
+// LGPD: campos mínimos sob execução de serviço solicitado; e-mail opcional e voluntário.
 
+const FORM_ID = 'fellice-captura-01'
+const FORM_VERSION = 'v1.0.0'
 const BACKEND_URL = import.meta.env.VITE_POCKETBASE_URL
 
-const WHATSAPP_ATENDIMENTO = '5571993960018'
-
-const ENDERECO = 'Rua Rubens Guelli, 68 - Terraço - Itaigara, Salvador - BA, 41815-135'
-
 type Slot = {
+  id: string
   slot_id: string
   slot_datetime: string
   slot_duration_min: number
   capacity: number
-  active: number
+  status: string
 }
 
-export interface AgendarState {
+type Step = 'grade' | 'dados' | 'confirmado' | 'encaminhado'
+
+const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+const formatDay = (iso: string) => {
+  const date = new Date(iso.replace(' ', 'T'))
+  return `${WEEKDAYS[date.getUTCDay()]}, ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`
+}
+
+const formatTime = (iso: string) => iso.slice(11, 16)
+
+// REF-02 / SPEC-4-004 — reaproveitar as respostas da triagem no mesmo atendimento.
+// O transporte usa o estado de navegação do roteador (mesma sessão, sem dados na
+// URL e sem armazenamento local). Acesso direto a /agendar sem triagem mantém o
+// comportamento anterior (formulário vazio e novo identificador). Falha de leitura
+// mantém o formulário vazio, sem indicar sucesso falso.
+type TriageContext = {
   lead_submission_id: string
   nome: string
   telefone: string
   email: string
   proximidade: string
   ocupacao: string
-  profissao: string
+  profissao?: string
   prioridade?: {
     nota: number
     faixa: 'alta' | 'media' | 'baixa' | 'sem_pontuacao'
@@ -40,382 +59,607 @@ export interface AgendarState {
   }
 }
 
-const localidadeDaProximidade = (proximidade: string): 'residencial' | 'comercial' =>
-  proximidade === 'Trabalho na região do Itaigara' ? 'comercial' : 'residencial'
-
-// REF-09 r2 — o horário é exibido como gravado (string crua, sem conversão de
-// fuso): a grade é criada em UTC com o horário local de Salvador já embutido.
-const formatSlotDia = (iso: string) => {
-  const [ano, mes, dia] = iso.slice(0, 10).split('-')
-  return `${dia}/${mes}/${ano}`
+async function createRecord(collection: string, data: Record<string, unknown>) {
+  if (!BACKEND_URL) throw new Error('Backend do Skip não configurado')
+  const response = await fetch(`${BACKEND_URL}/api/collections/${collection}/records`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!response.ok) throw new Error(`Falha ao salvar (${response.status})`)
+  return response.json()
 }
-const formatSlotHora = (iso: string) => iso.slice(11, 16)
-const formatSlotRotulo = (iso: string) => `${formatSlotDia(iso)} ${formatSlotHora(iso)}`
+
+async function updateRecord(collection: string, recordId: string, data: Record<string, unknown>) {
+  if (!BACKEND_URL) throw new Error('Backend do Skip não configurado')
+  const response = await fetch(`${BACKEND_URL}/api/collections/${collection}/records/${recordId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!response.ok) throw new Error(`Falha ao atualizar (${response.status})`)
+  return response.json()
+}
+
+const inputClass =
+  'min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-normal text-slate-800 outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-orange-500 dark:focus:ring-orange-950/60'
 
 const Agendar = () => {
-  const navigate = useNavigate()
-  const state = (useLocation().state as AgendarState | null) || null
-  const submissionId = state?.lead_submission_id || ''
-
+  const [step, setStep] = useState<Step>('grade')
   const [slots, setSlots] = useState<Slot[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selecionado, setSelecionado] = useState<Slot | null>(null)
-  const [enviando, setEnviando] = useState(false)
+  const [loadingSlots, setLoadingSlots] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [selected, setSelected] = useState<Slot | null>(null)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-  const [confirmado, setConfirmado] = useState<{ appointment_id: string; slot: Slot } | null>(null)
-  const [encaminhado, setEncaminhado] = useState(false)
-
-  // "Seus dados" — pré-preenchidos pela triagem (REF-02); editáveis antes de confirmar.
-  const [nome, setNome] = useState(state?.nome || '')
-  const [telefone, setTelefone] = useState(state?.telefone || '')
-  const [email, setEmail] = useState(state?.email || '')
-  const [profissao, setProfissao] = useState(state?.profissao || '')
-  const [localidade, setLocalidade] = useState<'residencial' | 'comercial'>(
-    state?.proximidade ? localidadeDaProximidade(state.proximidade) : 'residencial',
+  const [appointmentId, setAppointmentId] = useState('')
+  const [existingAppointment, setExistingAppointment] = useState<{
+    id: string
+    slot_id: string
+  } | null>(null)
+  const [form, setForm] = useState({
+    nome: '',
+    telefone_ou_canal_de_retorno: '',
+    localidade: '',
+    profissao: '',
+    email: '',
+  })
+  const location = useLocation()
+  // REF-02: contexto da triagem chega pelo estado do roteador; sem triagem, permanece vazio.
+  const triage = (location.state ?? null) as TriageContext | null
+  const triageValida =
+    !!triage &&
+    typeof triage.lead_submission_id === 'string' &&
+    triage.lead_submission_id.length > 0 &&
+    typeof triage.nome === 'string' &&
+    typeof triage.telefone === 'string' &&
+    typeof triage.email === 'string' &&
+    typeof triage.proximidade === 'string' &&
+    typeof triage.ocupacao === 'string'
+  const leadSubmissionId = useRef(
+    triageValida && triage ? triage.lead_submission_id : crypto.randomUUID(),
   )
+  // REF-06 / SPEC-4-004 (CA-4-R06) — acesso direto a /agendar sem triagem: sem respostas
+  // não há perfil a avaliar (insumo 3) → caminho do atendente, sem grade e sem reserva.
+  const acessoDireto = !triageValida
+  useEffect(() => {
+    if (!acessoDireto || step !== 'grade') return
+    let cancelado = false
+    const encaminhar = async () => {
+      try {
+        await handoffToHuman('ACESSO_DIRETO_SEM_TRIAGEM: perfil não avaliado; atendimento humano')
+      } catch (err) {
+        if (!cancelado) {
+          console.error(err)
+          setError('Não foi possível registrar seu pedido agora. Tente novamente em instantes.')
+        }
+      }
+    }
+    encaminhar()
+    return () => {
+      cancelado = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acessoDireto, step])
+  const [occupancy, setOccupancy] = useState<Record<string, number>>({})
+
+  // REF-02: pré-preencher uma única vez com as respostas da triagem do mesmo atendimento.
+  // O lead pode corrigir qualquer campo antes de confirmar.
+  useEffect(() => {
+    if (!triageValida || !triage) return
+    setForm((atual) => ({
+      ...atual,
+      nome: triage.nome.trim(),
+      telefone_ou_canal_de_retorno: triage.telefone.trim(),
+      email: triage.email.trim(),
+      profissao: triage.profissao || triage.ocupacao,
+      localidade:
+        triage.proximidade === 'Trabalho na região do Itaigara' ? 'comercial' : 'residencial',
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadSlots = async () => {
-    setLoading(true)
-    setError('')
+    if (!BACKEND_URL) {
+      setLoadError('Backend do Skip não configurado.')
+      setLoadingSlots(false)
+      return
+    }
+    setLoadingSlots(true)
+    setLoadError('')
     try {
-      const result = await pb.collection<Slot>('agenda_slots').getFullList({
-        filter: "status='ABERTO'",
-        sort: 'slot_datetime',
-      })
-      const occ = await pb
-        .collection<{ slot_id: string; capacity: number; active: number }>(
-          'agenda_slot_occupancy',
-        )
-        .getFullList({})
-      const occBySlot = new Map(occ.map((o) => [o.slot_id, o]))
-      setSlots(
-        result
-          .map((s) => {
-            const o = occBySlot.get(s.slot_id)
-            return { ...s, capacity: o?.capacity ?? s.capacity ?? 1, active: o?.active ?? 0 }
-          })
-          .filter((s) => s.active < s.capacity),
+      const response = await fetch(
+        `${BACKEND_URL}/api/collections/agenda_slots/records?filter=(status='ABERTO')&sort=slot_datetime&perPage=200`,
       )
+      if (!response.ok) throw new Error(`Falha ao carregar grade (${response.status})`)
+      const data = await response.json()
+      setSlots(data.items || [])
     } catch (err) {
       console.error(err)
-      setError('Não foi possível carregar a grade de horários. Tente novamente.')
+      setLoadError('Não foi possível carregar os horários agora.')
     } finally {
-      setLoading(false)
+      setLoadingSlots(false)
+    }
+  }
+
+  // RN-2.01: ocupação real por slot — lida da coleção pública agenda_slot_occupancy
+  // (1 registro por slot, campo active = reservas ativas, recalculada pela migração 0018).
+  // A página NÃO OFERTA slot cheio (active >= capacity).
+  const loadOccupancy = async () => {
+    if (!BACKEND_URL) return
+    try {
+      const response = await fetch(
+        `${BACKEND_URL}/api/collections/agenda_slot_occupancy/records?perPage=500`,
+      )
+      if (!response.ok) return
+      const data = await response.json()
+      const map: Record<string, number> = {}
+      for (const row of data.items || []) {
+        map[row.slot_id] = row.active || 0
+      }
+      setOccupancy(map)
+    } catch (err) {
+      console.warn('Não foi possível carregar a ocupação da grade.', err)
     }
   }
 
   useEffect(() => {
     loadSlots()
+    loadOccupancy()
   }, [])
 
-  const reservar = async () => {
-    if (!selecionado || enviando) return
-    setEnviando(true)
-    setError('')
-    try {
-      const now = new Date().toISOString()
-      const appointmentId = crypto.randomUUID()
-      await pb.collection('lead_appointments').create({
-        appointment_id: appointmentId,
-        lead_submission_id: submissionId,
-        form_id: 'fellice-captura-01',
-        form_version: 'v1.2.1',
-        slot_id: selecionado.slot_id,
-        slot_datetime: selecionado.slot_datetime,
-        slot_duration_min: selecionado.slot_duration_min,
-        nome: nome.trim(),
-        telefone_ou_canal_de_retorno: `${telefone.trim()} | ${email.trim()}`,
-        email: email.trim(),
-        localidade,
-        profissao: profissao.trim(),
-        status: 'CONCLUIDO',
-        concluded_at: now,
-        conflict_detected: false,
-      })
-      await pb.collection('lead_appointment_events').create({
-        event_id: crypto.randomUUID(),
-        appointment_id: appointmentId,
-        lead_submission_id: submissionId,
-        event_type: 'APPOINTMENT_CREATED',
-        occurred_at: now,
-        payload: { slot_id: selecionado.slot_id },
-      })
-      await pb.collection('lead_appointment_events').create({
-        event_id: crypto.randomUUID(),
-        appointment_id: appointmentId,
-        lead_submission_id: submissionId,
-        event_type: 'APPOINTMENT_CONCLUDED',
-        occurred_at: now,
-        payload: { slot_id: selecionado.slot_id },
-      })
-      setConfirmado({ appointment_id: appointmentId, slot: selecionado })
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch (err) {
-      console.error(err)
-      setError(
-        err instanceof Error && err.message.includes('encher')
-          ? err.message
-          : 'Não foi possível confirmar a reserva. Escolha outro horário, por favor.',
-      )
-      await loadSlots()
-    } finally {
-      setEnviando(false)
-    }
-  }
+  const byDay = slots.reduce<Record<string, Slot[]>>((acc, slot) => {
+    const day = slot.slot_datetime.slice(0, 10)
+    acc[day] = acc[day] || []
+    acc[day].push(slot)
+    return acc
+  }, {})
 
-  // REF-06 — acesso direto a /agendar sem triagem: encaminhamento humano
-  // (ACESSO_DIRETO_SEM_TRIAGEM), sem grade; erro visível se o handoff falhar.
-  const encaminharSemTriagem = async () => {
-    setEnviando(true)
-    setError('')
-    try {
-      const now = new Date().toISOString()
-      const handoffId = crypto.randomUUID()
-      await pb.collection('lead_handoffs').create({
-        handoff_id: handoffId,
-        lead_submission_id: '',
-        form_id: 'fellice-captura-01',
-        form_version: 'v1.2.1',
-        created_at: now,
-        motivo: 'ACESSO_DIRETO_SEM_TRIAGEM',
-        nome: nome.trim() || 'Lead (acesso direto)',
-        canal_de_retorno: `${telefone.trim()} | ${email.trim()}`,
-        objetivo: '',
-        proximidade: '',
-        interesse_em_visita: '',
-        attribution_status: 'ausente',
-        status: 'PENDENTE',
-      })
-      await pb.collection('lead_handoff_events').create({
-        event_id: crypto.randomUUID(),
-        handoff_id: handoffId,
-        lead_submission_id: '',
-        event_type: 'HANDOFF_CREATED',
-        occurred_at: now,
-        payload: { status: 'PENDENTE', motivo: 'ACESSO_DIRETO_SEM_TRIAGEM' },
-      })
-      setEncaminhado(true)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch (err) {
-      console.error(err)
-      setError('Não foi possível registrar o encaminhamento. Tente novamente ou fale com a gente pelo WhatsApp (71) 99396-0018.')
-    } finally {
-      setEnviando(false)
-    }
-  }
-
-  const irParaGrade = () => {
-    navigate('/agendar', {
-      state: {
-        lead_submission_id: submissionId,
-        nome,
-        telefone,
-        email,
-        proximidade: state?.proximidade || '',
-        ocupacao: state?.ocupacao || '',
-        profissao,
-      },
+  const handoffToHuman = async (reason: string) => {
+    const now = new Date().toISOString()
+    // REF-05 — prioridade da triagem (ou calculada aqui, se acesso direto) vai
+    // para o agendamento; a Visão exibe a mesma faixa da Fila.
+    const prioridadeAgendamento =
+      triage?.prioridade ?? calcularPrioridade(triage?.ocupacao, triage?.profissao)
+    const appointment = await createRecord('lead_appointments', {
+      appointment_id: crypto.randomUUID(),
+      lead_submission_id: leadSubmissionId.current,
+      form_id: FORM_ID,
+      form_version: FORM_VERSION,
+      slot_id: '',
+      slot_datetime: now,
+      slot_duration_min: 30,
+      status: 'ENCAMINHAMENTO_HUMANO',
+      conflict_detected: false,
+      handoff_reason: reason,
+      created_at: now,
+      prioridade_nota: prioridadeAgendamento.nota,
+      prioridade_faixa: prioridadeAgendamento.faixa,
+      prioridade_matriz: prioridadeAgendamento.matriz,
+      prioridade_motivo: prioridadeAgendamento.motivo,
     })
+    await createRecord('lead_appointment_events', {
+      event_id: crypto.randomUUID(),
+      appointment_id: appointment.appointment_id,
+      lead_submission_id: leadSubmissionId.current,
+      event_type: 'APPOINTMENT_HANDOFF',
+      occurred_at: now,
+      actor_id: 'public',
+      payload: { handoff_reason: reason },
+    })
+    setStep('encaminhado')
+  }
+
+  const confirmAppointment = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!selected) return
+    // RN-2.03: campos mínimos ausentes impedem CONCLUIDO (validação no cliente,
+    // conforme contrato F2-IMP-001 — a prova de borda é da F2-IMP-004)
+    if (
+      !form.nome.trim() ||
+      !form.telefone_ou_canal_de_retorno.trim() ||
+      !form.localidade ||
+      !form.profissao.trim()
+    ) {
+      setError('Preencha nome, canal de retorno, localidade e profissão para confirmar.')
+      return
+    }
+    setSending(true)
+    setError('')
+    const now = new Date().toISOString()
+    try {
+      // REF-05 — prioridade da triagem (ou calculada aqui, se acesso direto) vai
+      // para o agendamento; a Visão exibe a mesma faixa da Fila.
+      const prioridadeAgendamento =
+        triage?.prioridade ?? calcularPrioridade(triage?.ocupacao, triage?.profissao)
+      let appointmentRecord: Record<string, unknown>
+      if (existingAppointment && existingAppointment.slot_id !== selected.slot_id) {
+        // RN-2.06: reescolha de slot atualiza a mesma tentativa (não duplica)
+        appointmentRecord = await updateRecord('lead_appointments', existingAppointment.id, {
+          slot_id: selected.slot_id,
+          slot_datetime: selected.slot_datetime,
+          slot_duration_min: selected.slot_duration_min,
+          nome: form.nome,
+          telefone_ou_canal_de_retorno: form.telefone_ou_canal_de_retorno,
+          localidade: form.localidade,
+          profissao: form.profissao,
+          email: form.email,
+          status: 'CONCLUIDO',
+          conflict_detected: false,
+          concluded_at: now,
+          prioridade_nota: prioridadeAgendamento.nota,
+          prioridade_faixa: prioridadeAgendamento.faixa,
+          prioridade_matriz: prioridadeAgendamento.matriz,
+          prioridade_motivo: prioridadeAgendamento.motivo,
+        })
+        await createRecord('lead_appointment_events', {
+          event_id: crypto.randomUUID(),
+          appointment_id: appointmentRecord.appointment_id,
+          lead_submission_id: leadSubmissionId.current,
+          event_type: 'APPOINTMENT_CONCLUDED',
+          occurred_at: now,
+          actor_id: 'public',
+          payload: { slot_id: selected.slot_id, rescheduled: true },
+        })
+      } else {
+        appointmentRecord = await createRecord('lead_appointments', {
+          appointment_id: crypto.randomUUID(),
+          lead_submission_id: leadSubmissionId.current,
+          form_id: FORM_ID,
+          form_version: FORM_VERSION,
+          slot_id: selected.slot_id,
+          slot_datetime: selected.slot_datetime,
+          slot_duration_min: selected.slot_duration_min,
+          nome: form.nome,
+          telefone_ou_canal_de_retorno: form.telefone_ou_canal_de_retorno,
+          localidade: form.localidade,
+          profissao: form.profissao,
+          email: form.email,
+          status: 'CONCLUIDO',
+          conflict_detected: false,
+          created_at: now,
+          concluded_at: now,
+          prioridade_nota: prioridadeAgendamento.nota,
+          prioridade_faixa: prioridadeAgendamento.faixa,
+          prioridade_matriz: prioridadeAgendamento.matriz,
+          prioridade_motivo: prioridadeAgendamento.motivo,
+        })
+        await createRecord('lead_appointment_events', {
+          event_id: crypto.randomUUID(),
+          appointment_id: appointmentRecord.appointment_id,
+          lead_submission_id: leadSubmissionId.current,
+          event_type: 'APPOINTMENT_CREATED',
+          occurred_at: now,
+          actor_id: 'public',
+          payload: { slot_id: selected.slot_id },
+        })
+        await createRecord('lead_appointment_events', {
+          event_id: crypto.randomUUID(),
+          appointment_id: appointmentRecord.appointment_id,
+          lead_submission_id: leadSubmissionId.current,
+          event_type: 'APPOINTMENT_CONCLUDED',
+          occurred_at: now,
+          actor_id: 'public',
+          payload: { slot_id: selected.slot_id },
+        })
+      }
+      setAppointmentId(String(appointmentRecord.appointment_id))
+      setStep('confirmado')
+    } catch (err) {
+      console.error(err)
+      const status = err instanceof Error && err.message.includes('400') ? 400 : 0
+      if (status === 400) {
+        // provável conflito: slot tomado ou duplicado — RN-2.06 sem confirmação falsa
+        setError('Este horário acabou de ser ocupado. Escolha outro, por favor.')
+        setSelected(null)
+        setStep('grade')
+        await loadSlots()
+      } else {
+        // RN-2.05: falha de salvamento → encaminhamento humano, sem confirmação falsa
+        try {
+          await handoffToHuman('falha de sistema ao salvar o agendamento (sintético)')
+        } catch {
+          setError('Não foi possível concluir agora. Tente novamente em instantes.')
+        }
+      }
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const chooseSlot = (slot: Slot) => {
+    // RN-2.01/CA-2.02: bloqueia slot cheio no momento do clique (defesa em profundidade —
+    // a grade já esconde, mas a ocupação pode ter mudado desde o carregamento)
+    const active = occupancy[slot.slot_id] || 0
+    if (active >= slot.capacity) {
+      setError('Este horário acabou de encher. Escolha outro, por favor.')
+      return
+    }
+    setSelected(slot)
+    setError('')
+    setStep('dados')
+  }
+
+  const requestHuman = async () => {
+    setSending(true)
+    setError('')
+    try {
+      await handoffToHuman('lead solicitou atendimento humano na tela de agendamento')
+    } catch (err) {
+      console.error(err)
+      setError('Não foi possível registrar o pedido agora. Tente novamente.')
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground transition-colors duration-200">
-      <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur transition-colors duration-200">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground font-black text-lg shadow-sm">
-              R1
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-primary">
-                Fellice Fitness
-              </p>
-              <p className="text-sm font-medium text-muted-foreground">{ENDERECO}</p>
-            </div>
+    <div className="min-h-screen bg-[#fffaf5] text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100">
+      <header className="border-b border-orange-100/80 bg-white/90 backdrop-blur transition-colors duration-200 dark:border-slate-800/80 dark:bg-slate-900/90">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-orange-600 dark:text-orange-500">
+              Fellice Fitness
+            </p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Terrazzo R1 Sports Club · Rua Rubens Guelli, 68 - Terraço - Itaigara, Salvador - BA,
+              41815-135
+            </p>
           </div>
+          <Link to="/" className="text-sm font-semibold text-orange-600">
+            ← Voltar à triagem
+          </Link>
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        {encaminhado ? (
-          <div className="rounded-3xl border border-orange-200 bg-card p-6 shadow-2xl transition-all duration-300 sm:p-10">
-            <div className="text-center">
-              <div className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
-                <MessageCircle className="h-10 w-10" />
-              </div>
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
-                Vamos combinar o horário com você
-              </h1>
-              <p className="mt-3 text-lg font-medium text-foreground">
-                Nosso atendimento vai entrar em contato pelo canal informado para encontrar o
-                melhor dia e horário no rooftop.
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Prefere falar agora? Chame a gente no WhatsApp (71) 99396-0018.
-              </p>
-            </div>
-            <div className="mt-8 text-center">
-              <Button asChild size="lg" className="min-h-12 bg-emerald-600 font-bold text-white hover:bg-emerald-700">
-                <a href={`https://wa.me/${WHATSAPP_ATENDIMENTO}`} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle className="mr-2 h-5 w-5" />
-                  Falar no WhatsApp
-                </a>
-              </Button>
-            </div>
-          </div>
-        ) : confirmado ? (
-          <div className="rounded-3xl border border-emerald-500/30 bg-card p-6 shadow-2xl transition-all duration-300 sm:p-10">
-            <div className="text-center">
-              <div className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-10 w-10" />
-              </div>
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
-                Reserva confirmada!
-              </h1>
-              <p className="mt-3 text-lg font-medium text-foreground">
-                {formatSlotDia(confirmado.slot.slot_datetime)} às {formatSlotHora(confirmado.slot.slot_datetime)} · {confirmado.slot.slot_duration_min} min
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Código da reserva: <strong className="text-foreground">{confirmado.appointment_id.slice(0, 8)}</strong>
-              </p>
-              <p className="mt-4 text-sm text-muted-foreground">{ENDERECO}</p>
-            </div>
-          </div>
-        ) : !submissionId ? (
-          <div className="space-y-6">
-            <div className="rounded-3xl border border-border bg-card p-6 shadow-elevation sm:p-8">
-              <h1 className="text-2xl font-black tracking-tight text-foreground sm:text-3xl">
-                Vamos combinar o horário com você
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Para agendar online, complete a triagem de 2 minutos — ou peça atendimento humano
-                e a gente combina tudo com você.
-              </p>
-              <div className="mt-6 space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-semibold" htmlFor="ag-nome">Nome</label>
-                    <Input id="ag-nome" value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 min-h-12" placeholder="Seu nome" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold" htmlFor="ag-tel">WhatsApp</label>
-                    <Input id="ag-tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} className="mt-1 min-h-12" placeholder="(71) 99999-9999" />
-                  </div>
-                </div>
-                {error && (
-                  <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300">{error}</p>
-                )}
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Button asChild variant="outline" size="lg" className="min-h-12 flex-1">
-                    <Link to="/">Fazer a triagem (2 min)</Link>
-                  </Button>
-                  <Button size="lg" disabled={enviando} onClick={encaminharSemTriagem} className="min-h-12 flex-1 bg-primary font-bold">
-                    {enviando ? 'Enviando…' : 'Prefiro atendimento humano'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="rounded-3xl border border-border bg-card p-6 shadow-elevation sm:p-8">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                <Sparkles className="h-3.5 w-3.5" /> Escolha o melhor horário
-              </span>
-              <h1 className="mt-2 text-2xl font-black tracking-tight text-foreground sm:text-3xl">
-                Grade de horários
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Aulas experimentais de 30 minutos no rooftop do Terrazzo R1 Sports Club.
-              </p>
+      <main className="mx-auto max-w-3xl px-5 py-12">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+          Escolha o melhor horário para conhecer a academia
+        </h1>
+        <p className="mt-3 text-slate-600 dark:text-slate-300">
+          Visita presencial ou aula experimental de 30 minutos, com um atendente dedicado.
+        </p>
 
-              <div className="mt-6">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Seus dados</h2>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-semibold" htmlFor="ag-nome2">Nome</label>
-                    <Input id="ag-nome2" value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 min-h-12" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold" htmlFor="ag-tel2">WhatsApp</label>
-                    <Input id="ag-tel2" value={telefone} onChange={(e) => setTelefone(e.target.value)} className="mt-1 min-h-12" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold" htmlFor="ag-email">E-mail</label>
-                    <Input id="ag-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 min-h-12" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold" htmlFor="ag-prof">Profissão</label>
-                    <Input id="ag-prof" value={profissao} onChange={(e) => setProfissao(e.target.value)} className="mt-1 min-h-12" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold" htmlFor="ag-loc">Unidade</label>
-                    <select
-                      id="ag-loc"
-                      value={localidade}
-                      onChange={(e) => setLocalidade(e.target.value as 'residencial' | 'comercial')}
-                      className="mt-1 min-h-12 w-full rounded-xl border border-input bg-background px-3 text-sm"
-                    >
-                      <option value="residencial">Residencial</option>
-                      <option value="comercial">Comercial</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Horários disponíveis</h2>
-                {error && (
-                  <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300">{error}</p>
-                )}
-                {loading ? (
-                  <p className="mt-3 text-sm text-muted-foreground">Carregando horários…</p>
-                ) : slots.length === 0 ? (
-                  <p className="mt-3 rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                    Nenhum horário disponível no momento.
-                  </p>
-                ) : (
-                  <div className="mt-3 grid max-h-80 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-                    {slots.map((s) => (
-                      <button
-                        key={s.slot_id}
-                        type="button"
-                        onClick={() => setSelecionado(s)}
-                        className={`rounded-xl border p-3 text-left transition-all ${
-                          selecionado?.slot_id === s.slot_id
-                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40'
-                            : 'border-border bg-card hover:border-primary/40'
-                        }`}
-                      >
-                        <p className="text-sm font-bold">{formatSlotRotulo(s.slot_datetime)}</p>
-                        <p className="text-xs text-muted-foreground">{s.capacity - s.active} vaga(s)</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {error && selecionado && (
-                <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300">{error}</p>
-              )}
-
-              <div className="mt-6 flex items-center justify-between border-t border-border pt-5">
-                <Button variant="outline" onClick={() => navigate('/')} className="min-h-12">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Voltar
-                </Button>
-                <Button
-                  onClick={reservar}
-                  disabled={!selecionado || enviando}
-                  className="min-h-12 bg-primary px-8 font-bold"
+        {step === 'grade' && (
+          <section className="mt-8">
+            {/* REF-06 — falha do encaminhamento no acesso direto não pode ficar silenciosa */}
+            {error && (
+              <p
+                role="alert"
+                className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300"
+              >
+                {error}
+              </p>
+            )}
+            {loadingSlots && <p className="text-slate-500">Carregando horários...</p>}
+            {loadError && (
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-800 dark:border-slate-800 dark:bg-red-950/50 dark:text-red-300">
+                <p>{loadError}</p>
+                <button
+                  onClick={loadSlots}
+                  className="mt-3 rounded-xl bg-orange-600 px-4 py-2 text-sm font-bold text-white"
                 >
-                  {enviando ? 'Confirmando…' : 'Confirmar reserva'}
-                </Button>
+                  Tentar novamente
+                </button>
               </div>
-            </div>
+            )}
+            {!loadingSlots && !loadError && slots.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-orange-200 p-8 text-center dark:border-slate-700">
+                <p className="font-semibold">Nenhum horário disponível no momento.</p>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  Deixe seu pedido e nossa equipe entra em contato para combinar o melhor horário.
+                </p>
+                <button
+                  disabled={sending}
+                  onClick={requestHuman}
+                  className="mt-5 min-h-12 rounded-xl bg-orange-600 px-5 font-bold text-white disabled:opacity-60"
+                >
+                  {sending ? 'Registrando...' : 'Quero falar com um atendente'}
+                </button>
+              </div>
+            )}
+            {!loadingSlots &&
+              Object.entries(byDay).map(([day, daySlots]) => (
+                <div key={day} className="mt-8">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    {formatDay(`${day} 12:00:00.000Z`)}
+                  </h2>
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {daySlots.map((slot) => {
+                      // RN-2.01: slot cheio (ocupação >= capacidade) não é ofertado
+                      const active = occupancy[slot.slot_id] || 0
+                      const full = active >= slot.capacity
+                      const remaining = Math.max(slot.capacity - active, 0)
+                      if (full) return null
+                      return (
+                        <button
+                          key={slot.slot_id}
+                          onClick={() => chooseSlot(slot)}
+                          className="rounded-xl border border-orange-100 bg-white px-3 py-3 text-center font-bold text-slate-800 transition hover:border-orange-400 hover:bg-orange-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-orange-600 dark:hover:bg-slate-800"
+                        >
+                          {formatTime(slot.slot_datetime)}
+                          {slot.capacity > 1 && (
+                            <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+                              {remaining} vagas
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            {!loadingSlots && slots.length > 0 && (
+              <button
+                disabled={sending}
+                onClick={requestHuman}
+                className="mt-10 text-sm font-semibold text-orange-600 underline-offset-4 hover:underline disabled:opacity-60"
+              >
+                Não encontrei um bom horário — prefiro falar com um atendente
+              </button>
+            )}
+          </section>
+        )}
 
-            <p className="text-center text-xs text-muted-foreground">{ENDERECO}</p>
-          </div>
+        {step === 'dados' && selected && (
+          <form
+            onSubmit={confirmAppointment}
+            className="mt-8 rounded-3xl border border-orange-100 bg-white p-6 shadow-xl shadow-orange-100/50 sm:p-9 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none"
+          >
+            <div className="mb-6 rounded-2xl bg-orange-50 p-4 dark:bg-slate-800/60">
+              <p className="text-xs font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                Horário escolhido
+              </p>
+              <p className="mt-1 text-lg font-black">
+                {formatDay(selected.slot_datetime)} às {formatTime(selected.slot_datetime)}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected(null)
+                  setStep('grade')
+                }}
+                className="mt-2 text-sm font-semibold text-orange-600"
+              >
+                Escolher outro horário
+              </button>
+            </div>
+            <h2 className="text-xl font-bold">Seus dados</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              <span className="text-orange-600">*</span> Campos obrigatórios
+            </p>
+            <div className="mt-6 space-y-5">
+              <label className="block text-sm font-medium">
+                <span>
+                  Nome completo <span className="text-orange-600">*</span>
+                </span>
+                <input
+                  required
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                  placeholder="Seu nome"
+                  className={`mt-2 ${inputClass}`}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                <span>
+                  Telefone ou canal de retorno <span className="text-orange-600">*</span>
+                </span>
+                <input
+                  required
+                  value={form.telefone_ou_canal_de_retorno}
+                  onChange={(e) =>
+                    setForm({ ...form, telefone_ou_canal_de_retorno: e.target.value })
+                  }
+                  placeholder="WhatsApp ou telefone com DDD"
+                  className={`mt-2 ${inputClass}`}
+                />
+              </label>
+              <div className="text-sm font-medium">
+                <span>
+                  Onde você mora ou trabalha mais perto da academia?{' '}
+                  <span className="text-orange-600">*</span>
+                </span>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  {['residencial', 'comercial'].map((option) => (
+                    <button
+                      type="button"
+                      key={option}
+                      onClick={() => setForm({ ...form, localidade: option })}
+                      className={`min-h-12 rounded-xl border px-4 font-bold capitalize transition ${
+                        form.localidade === option
+                          ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300'
+                          : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="block text-sm font-medium">
+                <span>
+                  Profissão <span className="text-orange-600">*</span>
+                </span>
+                <input
+                  required
+                  value={form.profissao}
+                  onChange={(e) => setForm({ ...form, profissao: e.target.value })}
+                  placeholder="Sua profissão"
+                  className={`mt-2 ${inputClass}`}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                <span>E-mail (opcional)</span>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="Se quiser receber confirmação por e-mail"
+                  className={`mt-2 ${inputClass}`}
+                />
+              </label>
+            </div>
+            {error && (
+              <p
+                role="alert"
+                className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300"
+              >
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={sending}
+              className="mt-6 min-h-12 w-full rounded-xl bg-orange-600 px-5 font-bold text-white transition hover:bg-orange-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              {sending ? 'Confirmando...' : 'Confirmar meu horário'}
+            </button>
+          </form>
+        )}
+
+        {step === 'confirmado' && (
+          <section className="mt-8 rounded-3xl border border-emerald-100 bg-emerald-50 p-8 text-center dark:border-slate-800 dark:bg-emerald-950/40">
+            <p className="text-4xl">✅</p>
+            <h2 className="mt-4 text-2xl font-black text-emerald-900 dark:text-emerald-200">
+              Horário reservado!
+            </h2>
+            <p className="mt-3 text-emerald-800 dark:text-emerald-300">
+              {selected && (
+                <>
+                  {formatDay(selected.slot_datetime)} às {formatTime(selected.slot_datetime)} — te
+                  esperamos na Fellice Fitness (Terrazzo R1 Sports Club, Rua Rubens Guelli, 68 -
+                  Terraço - Itaigara, Salvador - BA).
+                </>
+              )}
+            </p>
+            <p className="mt-4 text-xs text-emerald-700 dark:text-emerald-400">
+              Código da reserva: {appointmentId}
+            </p>
+            <Link
+              to="/"
+              className="mt-6 inline-block min-h-12 rounded-xl bg-orange-600 px-6 leading-[3rem] font-bold text-white"
+            >
+              Concluir
+            </Link>
+          </section>
+        )}
+
+        {step === 'encaminhado' && (
+          <section className="mt-8 rounded-3xl border border-orange-100 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-4xl">🤝</p>
+            <h2 className="mt-4 text-2xl font-black">Vamos combinar o horário com você</h2>
+            <p className="mt-3 text-slate-600 dark:text-slate-300">
+              Registramos seu pedido e a equipe da Fellice Fitness vai entrar em contato pelo canal
+              informado para encontrar o melhor horário.
+            </p>
+            <Link
+              to="/"
+              className="mt-6 inline-block min-h-12 rounded-xl bg-orange-600 px-6 leading-[3rem] font-bold text-white"
+            >
+              Voltar ao início
+            </Link>
+          </section>
         )}
       </main>
     </div>
