@@ -489,7 +489,7 @@ const Visao = () => {
             </Link>
             <p className="mt-5 text-xs font-bold uppercase tracking-[0.24em] text-orange-600">
               Fellice Fitness
-            </p>
+  </p>
             <h1 className="mt-2 text-4xl font-black tracking-tight">Visão operacional</h1>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
               Em andamento de agendamento com contexto da triagem. Leitura — a conclusão vem da
@@ -1030,7 +1030,7 @@ const Visao = () => {
                 reversível com motivo; a reserva não é alterada (insumos 1–5). */}
             <div className="mt-6 rounded-2xl border border-purple-200 bg-purple-50/60 p-4 dark:border-purple-900 dark:bg-purple-950/30">
               <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                Classificação &quot;Sem perfil&quot
+                Classificação &quot;Sem perfil&quot;
               </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Distinta de &quot;Sem interesse&quot;. A reserva não é alterada; o histórico fica na
