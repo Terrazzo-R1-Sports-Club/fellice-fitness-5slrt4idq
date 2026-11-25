@@ -8,6 +8,7 @@ type FunnelStages = {
   triagem_concluida: number | null
   encaminhamento_humano: number | null
   agendamento_concluido: number | null
+  qualificado_nao_agendou: number | null
 }
 
 type FunnelData = {
@@ -191,6 +192,7 @@ const Funnel = () => {
     ['Triagem concluída', stages?.triagem_concluida],
     ['Encaminhamento humano', stages?.encaminhamento_humano],
     ['Agendamento concluído', stages?.agendamento_concluido],
+    ['Qualificado não agendou', stages?.qualificado_nao_agendou],
   ] as const
 
   return (
@@ -327,7 +329,7 @@ const Funnel = () => {
 
             {data?.available && stages && (
               <>
-                <section aria-label="Etapas do funil" className="grid gap-4 md:grid-cols-5">
+                <section aria-label="Etapas do funil" className="grid gap-4 md:grid-cols-6">
                   {stageCards.map(([label, value]) => (
                     <article
                       key={label}

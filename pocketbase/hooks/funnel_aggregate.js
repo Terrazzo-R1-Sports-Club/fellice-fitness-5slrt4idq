@@ -197,6 +197,41 @@ routerAdd(
       }
     }
 
+    // E1 (Fase 5) — "Qualificado não agendou": triagens concluídas no período que nem
+    // agendaram (CONCLUIDO), nem foram para atendimento humano, excluídas por submissão.
+    const completedTriageSubmissionIds = new Set()
+    const humanHandoffSubmissionIds = new Set()
+    if (appointmentRows) {
+      for (const row of appointmentRows) {
+        const status = row.getString('status', '')
+        const createdInPeriod = isWithinPeriod(row.getString('created_at', ''))
+        const concludedInPeriod = isWithinPeriod(row.getString('concluded_at', ''))
+        const submissionId = row.getString('lead_submission_id', '').trim()
+        if (!submissionId) continue
+        if (status === 'CONCLUIDO' && concludedInPeriod)
+          completedTriageSubmissionIds.add(submissionId)
+        if (status === 'ENCAMINHAMENTO_HUMANO' && createdInPeriod)
+          humanHandoffSubmissionIds.add(submissionId)
+      }
+    }
+    if (appointmentEventRows) {
+      for (const row of appointmentEventRows) {
+        if (!isWithinPeriod(row.getString('occurred_at', ''))) continue
+        const eventType = row.getString('event_type', '')
+        const submissionId = row.getString('lead_submission_id', '').trim()
+        if (!submissionId) continue
+        if (eventType === 'APPOINTMENT_CONCLUDED') completedTriageSubmissionIds.add(submissionId)
+        if (eventType === 'APPOINTMENT_HANDOFF') humanHandoffSubmissionIds.add(submissionId)
+      }
+    }
+    if (handoffRows) {
+      for (const row of handoffRows) {
+        if (!isWithinPeriod(row.getString('created_at', ''))) continue
+        const submissionId = row.getString('lead_submission_id', '').trim()
+        if (submissionId) humanHandoffSubmissionIds.add(submissionId)
+      }
+    }
+
     const appointmentById = new Map()
     if (appointmentRows) {
       for (const row of appointmentRows) {
@@ -275,6 +310,12 @@ routerAdd(
       encaminhamento_humano:
         handoffRows && appointmentRows && appointmentEventRows ? humanHandoffKeys.size : null,
       agendamento_concluido: appointmentRows ? completedAppointmentKeys.size : null,
+      qualificado_nao_agendou:
+        submissionEventRows && appointmentRows && handoffRows
+          ? triageCompletedIds.size -
+            completedTriageSubmissionIds.size -
+            humanHandoffSubmissionIds.size
+          : null,
     }
     const coverage = submissionRows
       ? {
