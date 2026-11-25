@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,12 +18,29 @@ import {
   Zap,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { avaliarElegibilidade } from '@/lib/elegibilidade'
+import type { ResultadoElegibilidade } from '@/lib/elegibilidade'
+import { calcularPrioridade } from '@/lib/prioridade'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 
 const FORM_ID = 'fellice-captura-01'
-const FORM_VERSION = 'v1.0.0'
+const FORM_VERSION = 'v1.2.1'
+
+// REF-07 — vídeos do formulário (insumos 4/4 aprovados pelo consultor em 17–18/11/2026,
+// registrados em 04_fase-atual/ref07-insumos.md). Mídias do Drive da cliente, exibidas
+// pelo player embutido do Google Drive (iframe /preview); reprodução automática e
+// NÃO bloqueante — avançar nunca depende do vídeo. Sem upload, conversão ou tracking novo.
+const VIDEO_DIFERENCIAIS = '1OWAIuHhBk76_dmt7dzKOb-nOi5rEK8e2'
+const VIDEO_POR_OBJETIVO: Record<string, string> = {
+  Emagrecimento: '1izYU8RrUkx2dQRAMVVoD1HePVlJ9YDcx',
+  'Ganho de massa muscular': '1uZ_e4on5WJucL6flgEuvzIR2uNAYRpkT',
+  'Condicionamento físico e resistência': '1ZUfnoXanlLzYl3nABYQJU1nqA46uDlTy',
+  'Saúde, mobilidade e qualidade de vida': '1iwR-xN4CDskj-EtOMQqzZINCy4Ld0rWk',
+}
+// Objetivos sem vídeo (etapa segue direta): Recuperação de lesões,
+// Melhorar a performance esportiva e Ainda não defini meu objetivo.
 const BACKEND_URL = import.meta.env.VITE_POCKETBASE_URL
 const WHATSAPP_ATENDIMENTO = '5571993960018'
 
@@ -105,30 +122,53 @@ const PROXIMIDADES = [
   },
 ]
 
+// REF-03 — lista aprovada pela cliente em 29/10/2026. O id é o valor interno
+// gravado em lead_submissions.ocupacao (campo select); rótulos não mudam
+// valores internos nem semântica histórica (regra 5 da SPEC).
 const OCUPACOES = [
   { id: 'CLT', title: 'Profissional CLT', desc: 'Horário comercial e rotina corporativa' },
   {
-    id: 'Autônomo/Empresário',
-    title: 'Autônomo ou Empresário',
-    desc: 'Gestão de negócio e agenda dinâmica',
+    id: 'Autônomo',
+    title: 'Autônomo',
+    desc: 'Trabalho por conta própria com agenda própria',
   },
   {
-    id: 'Executivo/Gestor',
-    title: 'Executivo ou Gestor',
+    id: 'Empresário',
+    title: 'Empresário',
+    desc: 'Gestão do próprio negócio e equipe',
+  },
+  {
+    id: 'Diretor ou alta gerência',
+    title: 'Diretor ou alta gerência',
     desc: 'Liderança e rotina de alta demanda',
   },
   { id: 'Estudante', title: 'Estudante', desc: 'Graduação, pós-graduação ou concursos' },
   { id: 'Aposentado', title: 'Aposentado', desc: 'Foco em saúde, lazer e longevidade' },
   {
-    id: 'Profissional da saúde, educação ou outra área com horário irregular',
-    title: 'Área da Saúde / Educação / Plantonista',
-    desc: 'Turnos variados, plantões ou horários flexíveis',
-  },
-  {
     id: 'Prefiro não informar',
     title: 'Prefiro não informar',
     desc: 'Sem restrições de categoria',
   },
+]
+
+// REF-03 — pergunta secundária de profissão, aprovada pela cliente em 29/10/2026.
+// Obrigatória para CLT e Autônomo; "Outros" coleta texto livre (aprovado).
+const PROFISSOES_CLT = [
+  'Assistente administrativo',
+  'Vendedor',
+  'Técnico de enfermagem',
+  'Médico',
+  'Engenheiro',
+  'Outros',
+]
+
+const PROFISSOES_AUTONOMO = [
+  'Cabeleireiro',
+  'Eletricista',
+  'Advogado',
+  'Dentista',
+  'Médico',
+  'Outros',
 ]
 
 const INTERESSES = [
@@ -199,14 +239,14 @@ const ETAPAS_INFO = [
     titulo: 'Rotina',
     pergunta: 'Como é a sua rotina de trabalho ou estudos?',
     subtitulo: 'Isso nos ajuda a sugerir os melhores horários de treino.',
-    microcopy: 'Etapa 6 de 7 — Falta só mais uma etapa para desbloquear seu prêmio!',
+    microcopy: 'Etapa 6 de 7 — Falta só mais uma etapa para concluir sua triagem!',
   },
   {
     numero: 7,
     titulo: 'Confirmação',
     pergunta: 'Pronto para conhecer o nosso rooftop?',
     subtitulo: 'Escolha como prefere iniciar sua experiência e confirme sua autorização.',
-    microcopy: 'Etapa 7 de 7 — Conclua agora e garanta sua Aula Experimental Gratuita!',
+    microcopy: 'Etapa 7 de 7 — Conclua agora para finalizar sua triagem!',
   },
 ]
 
@@ -217,6 +257,8 @@ export interface LeadFormData {
   objetivo: string
   proximidade: string
   ocupacao: string
+  profissao: string
+  profissao_outros: string
   interesse_em_visita: string
   precisa_de_ajuda_humana: boolean
   consentimento: boolean
@@ -229,10 +271,16 @@ const initialFormData: LeadFormData = {
   objetivo: '',
   proximidade: '',
   ocupacao: '',
+  profissao: '',
+  profissao_outros: '',
   interesse_em_visita: '',
   precisa_de_ajuda_humana: false,
   consentimento: false,
 }
+
+// REF-03 — a profissão só é perguntada para CLT e Autônomo (obrigatória).
+const profissaoAplicavel = (ocupacao: string): boolean =>
+  ocupacao === 'CLT' || ocupacao === 'Autônomo'
 
 function formatBrazilianPhone(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11)
@@ -278,6 +326,10 @@ export function Index() {
   const [formData, setFormData] = useState<LeadFormData>(initialFormData)
   const [erros, setErros] = useState<Record<string, string>>({})
   const [statusEnvio, setStatusEnvio] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
+  // REF-06 — resultado da elegibilidade quando o perfil não qualifica (tela de encaminhamento)
+  const [elegibilidadeBloqueio, setElegibilidadeBloqueio] = useState<ResultadoElegibilidade | null>(
+    null,
+  )
   const [erroEnvio, setErroEnvio] = useState<string>('')
 
   const startedAt = useRef(new Date().toISOString())
@@ -352,6 +404,15 @@ export function Index() {
       case 6: {
         if (!formData.ocupacao) {
           novosErros.ocupacao = 'Selecione a opção que melhor descreve sua rotina.'
+          break
+        }
+        // REF-03 — pergunta secundária obrigatória para CLT e Autônomo.
+        if (profissaoAplicavel(formData.ocupacao)) {
+          if (!formData.profissao) {
+            novosErros.profissao = 'Selecione sua profissão para continuar.'
+          } else if (formData.profissao === 'Outros' && !formData.profissao_outros.trim()) {
+            novosErros.profissao_outros = 'Descreva sua profissão para continuar.'
+          }
         }
         break
       }
@@ -362,7 +423,7 @@ export function Index() {
         }
         if (!formData.consentimento) {
           novosErros.consentimento =
-            'É necessário autorizar o contato da academia para enviar a triagem e resgatar o prêmio.'
+            'É necessário autorizar o contato da academia para enviar a triagem.'
         }
         break
       }
@@ -414,6 +475,17 @@ export function Index() {
 
     const canalDeRetorno = `${formData.telefone.trim()} | ${formData.email.trim()}`
 
+    // REF-03 — profissão da pergunta secundária; "Outros" grava o texto livre
+    // informado pelo lead (campo texto, não select).
+    const profissaoFinal =
+      formData.profissao === 'Outros'
+        ? `Outros: ${formData.profissao_outros.trim()}`
+        : formData.profissao
+
+    // REF-05 — pontuação determinística (matriz v1) calculada na conclusão da
+    // triagem e gravada junto da submissão; valor e motivo rastreáveis.
+    const prioridade = calcularPrioridade(formData.ocupacao, profissaoFinal)
+
     try {
       await createRecord('lead_submissions', {
         lead_submission_id: leadSubmissionId.current,
@@ -426,6 +498,11 @@ export function Index() {
         objetivo: formData.objetivo,
         proximidade: formData.proximidade,
         ocupacao: formData.ocupacao,
+        profissao: profissaoFinal,
+        prioridade_nota: prioridade.nota,
+        prioridade_faixa: prioridade.faixa,
+        prioridade_matriz: prioridade.matriz,
+        prioridade_motivo: prioridade.motivo,
         interesse_em_visita: formData.interesse_em_visita,
         precisa_de_ajuda_humana: formData.precisa_de_ajuda_humana,
         consentimento: formData.consentimento,
@@ -447,6 +524,11 @@ export function Index() {
           form_version: FORM_VERSION,
           telefone: formData.telefone.trim(),
           email: formData.email.trim(),
+          profissao: profissaoFinal,
+          prioridade_nota: prioridade.nota,
+          prioridade_faixa: prioridade.faixa,
+          prioridade_matriz: prioridade.matriz,
+          prioridade_motivo: prioridade.motivo,
         },
       })
 
@@ -464,6 +546,11 @@ export function Index() {
           objetivo: formData.objetivo,
           proximidade: formData.proximidade,
           ocupacao: formData.ocupacao,
+          profissao: profissaoFinal,
+          prioridade_nota: prioridade.nota,
+          prioridade_faixa: prioridade.faixa,
+          prioridade_matriz: prioridade.matriz,
+          prioridade_motivo: prioridade.motivo,
           interesse_em_visita: formData.interesse_em_visita,
           utm_source: utmSource,
           utm_medium: utmMedium,
@@ -479,6 +566,52 @@ export function Index() {
           occurred_at: now,
           payload: { status: 'PENDENTE', motivo: 'PEDIDO_DE_AJUDA_HUMANA' },
         })
+      }
+
+      // REF-06 / SPEC-4-004 (CA-4-R06) — elegibilidade por perfil no fim da triagem.
+      // Ajuda humana é exceção (insumo 3): quem pediu atendimento humano não é bloqueado.
+      // NAO_QUALIFICADO e AUSENTE → handoff na Fila; sem grade e sem oferta de WhatsApp.
+      const elegibilidade = avaliarElegibilidade(
+        formData.proximidade,
+        formData.ocupacao,
+        profissaoFinal,
+      )
+      const ajudaHumana = formData.precisa_de_ajuda_humana === true
+      if (!ajudaHumana && elegibilidade.veredito !== 'QUALIFICADO') {
+        const handoffId = crypto.randomUUID()
+        await createRecord('lead_handoffs', {
+          handoff_id: handoffId,
+          lead_submission_id: leadSubmissionId.current,
+          form_id: FORM_ID,
+          form_version: FORM_VERSION,
+          created_at: now,
+          motivo: elegibilidade.motivo,
+          nome: formData.nome.trim(),
+          canal_de_retorno: canalDeRetorno,
+          objetivo: formData.objetivo,
+          proximidade: formData.proximidade,
+          ocupacao: formData.ocupacao,
+          profissao: profissaoFinal,
+          prioridade_nota: prioridade.nota,
+          prioridade_faixa: prioridade.faixa,
+          prioridade_matriz: prioridade.matriz,
+          prioridade_motivo: prioridade.motivo,
+          interesse_em_visita: formData.interesse_em_visita,
+          utm_source: utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
+          attribution_status: attributionStatus,
+          status: 'PENDENTE',
+        })
+        await createRecord('lead_handoff_events', {
+          event_id: crypto.randomUUID(),
+          handoff_id: handoffId,
+          lead_submission_id: leadSubmissionId.current,
+          event_type: 'HANDOFF_CREATED',
+          occurred_at: now,
+          payload: { status: 'PENDENTE', motivo: elegibilidade.motivo },
+        })
+        setElegibilidadeBloqueio(elegibilidade)
       }
 
       setStatusEnvio('success')
@@ -498,6 +631,34 @@ export function Index() {
   )
   const linkWhatsApp = `https://wa.me/${WHATSAPP_ATENDIMENTO}?text=${mensagemWhatsApp}`
 
+  // REF-02 / SPEC-4-004 — levar as respostas já preenchidas até o agendamento.
+  // O transporte é o estado de navegação do roteador (mesma sessão de atendimento,
+  // sem dados na URL e sem armazenamento local). O identificador da submissão é
+  // preservado para não criar lead/agendamento duplicado (contrato B3-03).
+  const navigate = useNavigate()
+  const irParaGrade = () => {
+    navigate('/agendar', {
+      state: {
+        lead_submission_id: leadSubmissionId.current,
+        nome: formData.nome.trim(),
+        telefone: formData.telefone.trim(),
+        email: formData.email.trim(),
+        proximidade: formData.proximidade,
+        ocupacao: formData.ocupacao,
+        profissao:
+          formData.profissao === 'Outros'
+            ? `Outros: ${formData.profissao_outros.trim()}`
+            : formData.profissao,
+        prioridade: calcularPrioridade(
+          formData.ocupacao,
+          formData.profissao === 'Outros'
+            ? `Outros: ${formData.profissao_outros.trim()}`
+            : formData.profissao,
+        ),
+      },
+    })
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-200">
       <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur transition-colors duration-200">
@@ -511,7 +672,8 @@ export function Index() {
                 Fellice Fitness
               </p>
               <p className="text-sm font-medium text-muted-foreground">
-                Terrazzo R1 Sports Club · Alto do Itaigara
+                Terrazzo R1 Sports Club · Rua Rubens Guelli, 68 - Terraço - Itaigara, Salvador - BA,
+                41815-135
               </p>
             </div>
           </div>
@@ -530,7 +692,47 @@ export function Index() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        {statusEnvio === 'success' ? (
+        {statusEnvio === 'success' && elegibilidadeBloqueio ? (
+          <div className="rounded-3xl border border-orange-200 bg-card p-6 shadow-2xl transition-all duration-300 sm:p-10">
+            <div className="text-center">
+              <div className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                <HelpCircle className="h-10 w-10" />
+              </div>
+              <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                <CheckCircle2 className="h-4 w-4" /> Triagem Concluída
+              </span>
+              <h1 className="mt-4 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+                Recebemos suas respostas, {formData.nome.trim()}!
+              </h1>
+              <p className="mt-3 text-lg font-medium text-foreground">
+                Com base nas suas respostas, nossa equipe vai entrar em contato para encontrar o
+                melhor caminho com você.
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Seu atendimento foi encaminhado para a equipe da Fellice Fitness (Terrazzo R1 Sports
+                Club), que falará com você pelo canal informado.
+              </p>
+            </div>
+
+            <div className="mt-8 text-center">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setFormData(initialFormData)
+                  setEtapaAtual(1)
+                  setStatusEnvio('idle')
+                  setElegibilidadeBloqueio(null)
+                  leadSubmissionId.current = crypto.randomUUID()
+                  startedAt.current = new Date().toISOString()
+                  startedEventRecorded.current = false
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Preencher nova triagem
+              </Button>
+            </div>
+          </div>
+        ) : statusEnvio === 'success' ? (
           <div className="rounded-3xl border border-emerald-500/30 bg-card p-6 shadow-2xl transition-all duration-300 sm:p-10">
             <div className="text-center">
               <div className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -585,7 +787,15 @@ export function Index() {
                   size="lg"
                   className="min-h-12 border-primary/30 font-semibold"
                 >
-                  <Link to="/agendar">Ver grade de horários</Link>
+                  <Link
+                    to="/agendar"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      irParaGrade()
+                    }}
+                  >
+                    Ver grade de horários
+                  </Link>
                 </Button>
               </div>
             </div>
@@ -629,6 +839,7 @@ export function Index() {
                   setFormData(initialFormData)
                   setEtapaAtual(1)
                   setStatusEnvio('idle')
+                  setElegibilidadeBloqueio(null)
                   leadSubmissionId.current = crypto.randomUUID()
                   startedAt.current = new Date().toISOString()
                   startedEventRecorded.current = false
@@ -831,6 +1042,19 @@ export function Index() {
                     {erros.objetivo && (
                       <p className="text-sm font-medium text-destructive">{erros.objetivo}</p>
                     )}
+                    {formData.objetivo && VIDEO_POR_OBJETIVO[formData.objetivo] && (
+                      <div className="mx-auto mt-4 w-full max-w-[320px] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                        <div className="aspect-[9/16] w-full">
+                          <iframe
+                            src={`https://drive.google.com/file/d/${VIDEO_POR_OBJETIVO[formData.objetivo]}/preview`}
+                            title={`Vídeo — ${formData.objetivo}`}
+                            allow="autoplay; encrypted-media; fullscreen"
+                            allowFullScreen
+                            className="h-full w-full"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -897,8 +1121,18 @@ export function Index() {
                             key={item.id}
                             type="button"
                             onClick={() => {
-                              setFormData({ ...formData, ocupacao: item.id })
+                              // REF-03 — trocar a rotina limpa a resposta secundária
+                              // incompatível (profissão e texto de Outros).
+                              setFormData({
+                                ...formData,
+                                ocupacao: item.id,
+                                profissao: '',
+                                profissao_outros: '',
+                              })
                               if (erros.ocupacao) setErros({ ...erros, ocupacao: '' })
+                              if (erros.profissao) setErros({ ...erros, profissao: '' })
+                              if (erros.profissao_outros)
+                                setErros({ ...erros, profissao_outros: '' })
                             }}
                             className={`flex flex-col justify-between rounded-2xl border p-4 text-left transition-all ${
                               selected
@@ -914,6 +1148,89 @@ export function Index() {
                     </div>
                     {erros.ocupacao && (
                       <p className="text-sm font-medium text-destructive">{erros.ocupacao}</p>
+                    )}
+                    {profissaoAplicavel(formData.ocupacao) && (
+                      <div className="mt-4 space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Qual é a sua profissão? <span className="text-primary">*</span>
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {(formData.ocupacao === 'CLT' ? PROFISSOES_CLT : PROFISSOES_AUTONOMO).map(
+                            (prof) => {
+                              const selected = formData.profissao === prof
+                              return (
+                                <button
+                                  key={prof}
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      profissao: prof,
+                                      profissao_outros: '',
+                                    })
+                                    if (erros.profissao) setErros({ ...erros, profissao: '' })
+                                    if (erros.profissao_outros)
+                                      setErros({ ...erros, profissao_outros: '' })
+                                  }}
+                                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition-all ${
+                                    selected
+                                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                                      : 'border-border bg-card text-foreground hover:border-primary/40 hover:bg-secondary/40'
+                                  }`}
+                                >
+                                  {prof}
+                                </button>
+                              )
+                            },
+                          )}
+                        </div>
+                        {formData.profissao === 'Outros' && (
+                          <Input
+                            value={formData.profissao_outros}
+                            onChange={(e) => {
+                              setFormData({ ...formData, profissao_outros: e.target.value })
+                              if (erros.profissao_outros)
+                                setErros({ ...erros, profissao_outros: '' })
+                            }}
+                            placeholder="Escreva qual é a sua profissão"
+                            aria-label="Descreva sua profissão"
+                          />
+                        )}
+                        {erros.profissao && (
+                          <p className="text-sm font-medium text-destructive">{erros.profissao}</p>
+                        )}
+                        {erros.profissao_outros && (
+                          <p className="text-sm font-medium text-destructive">
+                            {erros.profissao_outros}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {VIDEO_DIFERENCIAIS && (
+                      <div className="mt-6 space-y-3">
+                        <div className="mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                          <div className="aspect-[9/16] w-full">
+                            <iframe
+                              src={`https://drive.google.com/file/d/${VIDEO_DIFERENCIAIS}/preview`}
+                              title="Conheça o Fellice Fitness"
+                              allow="autoplay; encrypted-media; fullscreen"
+                              allowFullScreen
+                              className="h-full w-full"
+                            />
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+                          <p className="text-sm font-bold text-foreground">
+                            Um espaço pensado para elevar sua experiência de treino.
+                          </p>
+                          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            Estrutura, tecnologia, conforto e possibilidades para cuidar do corpo,
+                            superar limites e transformar sua rotina. E tem mais: você ainda pode
+                            aproveitar a vista da cidade e correr em uma pista de cooper ao ar
+                            livre.
+                          </p>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1005,8 +1322,8 @@ export function Index() {
                         <div className="space-y-1">
                           <p className="text-xs leading-relaxed text-muted-foreground">
                             Autorizo a Fellice Fitness a entrar em contato pelos meios eletrônicos
-                            informados (WhatsApp, telefone e e-mail) para liberar minha Aula
-                            Experimental Gratuita, avisos e informações da academia.
+                            informados (WhatsApp, telefone e e-mail) para enviar minha triagem,
+                            avisos e informações da academia.
                           </p>
                         </div>
                       </label>
@@ -1055,8 +1372,8 @@ export function Index() {
                     </>
                   ) : etapaAtual === 7 ? (
                     <>
-                      Concluir & Resgatar Prêmio
-                      <Trophy className="ml-2 h-4 w-4" />
+                      Concluir
+                      <CheckCircle2 className="ml-2 h-4 w-4" />
                     </>
                   ) : (
                     <>
@@ -1069,7 +1386,10 @@ export function Index() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 text-xs text-muted-foreground">
-              <p>Terrazzo R1 Sports Club · Rua Rosa dos Ventos, Alto do Itaigara</p>
+              <p>
+                Terrazzo R1 Sports Club · Rua Rubens Guelli, 68 - Terraço - Itaigara, Salvador - BA,
+                41815-135
+              </p>
               <div className="flex items-center gap-4">
                 <Link to="/agendar" className="font-semibold text-primary hover:underline">
                   Agendamento direto de visita
