@@ -6,9 +6,9 @@
 // e as contas permanentes (gerencia@, r1@, administracao@) têm senha que
 // ninguém registrou.
 //
-// Este usuário existe SOMENTE para a prova técnica da T06 e é removido pela
-// migração seguinte (0073), como aconteceu na 0068 → 0069.
-// Não é conta de operação; não deve sobreviver à T06.
+// Este usuário existe SOMENTE para a prova técnica e o teste humano da T06.
+// REMOVER antes da publicação em produção (migração de limpeza final).
+// Não é conta de operação.
 
 migrate(
   (app) => {
