@@ -11,6 +11,8 @@ import Visao from './pages/Visao'
 import Funil from './pages/Funil'
 import Dashboard from './pages/Dashboard'
 import Saude from './pages/Saude'
+import RecuperarSenha from './pages/RecuperarSenha'
+import ResetarSenha from './pages/ResetarSenha'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -32,6 +34,8 @@ const App = () => (
             <Route path="/funil" element={<Funil />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/saude" element={<Saude />} />
+            <Route path="/recuperar-senha" element={<RecuperarSenha />} />
+            <Route path="/resetar-senha" element={<ResetarSenha />} />
             {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
           </Route>
           <Route path="*" element={<NotFound />} />
