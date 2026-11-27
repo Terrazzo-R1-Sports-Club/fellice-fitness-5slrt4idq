@@ -91,7 +91,17 @@ const Queue = () => {
       await load()
     } catch (err) {
       console.error(err)
-      setLoginError('Login inválido ou usuário sem papel de Champion/Consultor Comercial.')
+      // T01-PWD — o hook de rate limit responde 429 com mensagem de bloqueio
+      // temporário; nesse caso exibimos a mensagem do servidor, não a genérica.
+      const status = (err as { status?: number })?.status
+      if (status === 429) {
+        const mensagem =
+          (err as { response?: { message?: string } })?.response?.message ||
+          'Muitas tentativas de login. Aguarde alguns minutos antes de tentar novamente.'
+        setLoginError(mensagem)
+      } else {
+        setLoginError('Login inválido ou usuário sem papel de Champion/Consultor Comercial.')
+      }
     } finally {
       setLoading(false)
     }
@@ -182,6 +192,7 @@ const Queue = () => {
               <input
                 required
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4 dark:border-slate-700 dark:bg-slate-950"
@@ -192,6 +203,7 @@ const Queue = () => {
               <input
                 required
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4 dark:border-slate-700 dark:bg-slate-950"
@@ -211,6 +223,12 @@ const Queue = () => {
             >
               {loading ? 'Entrando...' : 'Entrar na fila'}
             </button>
+            <Link
+              to="/recuperar-senha"
+              className="mt-4 block text-center text-sm font-semibold text-orange-600 hover:underline"
+            >
+              Esqueci minha senha
+            </Link>
           </form>
         ) : (
           <>
